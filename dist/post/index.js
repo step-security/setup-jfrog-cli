@@ -1094,7 +1094,7 @@ class OidcUtils {
                     console.log('Application key is not found in the config file.');
                     return '';
                 }
-                console.debug('Found application key: ' + applicationKey);
+                console.debug('Found application key: [REDACTED]');
                 return applicationKey;
             }
             catch (error) {
