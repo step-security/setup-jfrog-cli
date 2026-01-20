@@ -11,7 +11,7 @@ jobs:
 
     strategy:
       matrix:
-        os: ${{ github.actor == 'dependabot[bot]' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest", "macos-13", "windows-latest"]') }}
+        os: ${{ github.actor == 'dependabot[bot]' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest", "macos-15", "windows-latest"]') }}
         cli-version: [ "", "latest", "1.46.4" ]
       fail-fast: false
     steps:
