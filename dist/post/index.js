@@ -144,7 +144,13 @@ function collectAndPublishBuildInfoIfNeeded() {
         // We allow this step to fail, and we don't want to fail the entire build publish if they do.
         try {
             core.startGroup('Collect the Git information');
-            yield utils_1.Utils.runCli(['rt', 'build-add-git'], { cwd: workingDirectory });
+            const gitDir = (__nccwpck_require__(6928).join)(workingDirectory, '.git');
+            if ((__nccwpck_require__(9896).existsSync)(gitDir)) {
+                yield utils_1.Utils.runCli(['rt', 'build-add-git'], { cwd: workingDirectory });
+            }
+            else {
+                core.info('No .git directory found. Skipping Git information collection.');
+            }
         }
         catch (error) {
             core.warning('Failed while attempting to collect Git information: ' + error);
@@ -1410,6 +1416,7 @@ class Utils {
         }
         Utils.exportVariableIfNotSet('JFROG_CLI_ENV_EXCLUDE', '*password*;*secret*;*key*;*token*;*auth*;JF_ARTIFACTORY_*;JF_ENV_*;JF_URL;JF_USER;JF_PASSWORD;JF_ACCESS_TOKEN');
         Utils.exportVariableIfNotSet('JFROG_CLI_OFFER_CONFIG', 'false');
+        Utils.exportVariableIfNotSet('JFROG_CLI_AVOID_NEW_VERSION_WARNING', 'true');
         Utils.exportVariableIfNotSet('CI', 'true');
         Utils.exportVariableIfNotSet('JFROG_CLI_SOURCECODE_REPOSITORY', (_a = process.env.GITHUB_REPOSITORY) !== null && _a !== void 0 ? _a : '');
         Utils.exportVariableIfNotSet('JFROG_CLI_CI_JOB_ID', (_b = process.env.GITHUB_WORKFLOW) !== null && _b !== void 0 ? _b : '');
