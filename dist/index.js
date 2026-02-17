@@ -52854,7 +52854,7 @@ module.exports = /*#__PURE__*/JSON.parse('{"application/1d-interleaved-parityfec
 /***/ ((module) => {
 
 "use strict";
-module.exports = {"rE":"4.8.1"};
+module.exports = {"rE":"4.9.1"};
 
 /***/ })
 
