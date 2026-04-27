@@ -29,40 +29,29 @@ var __importStar = (this && this.__importStar) || function (mod) {
     __setModuleDefault(result, mod);
     return result;
 };
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.checkConnectionToArtifactory = checkConnectionToArtifactory;
 const core = __importStar(__nccwpck_require__(7484));
 const utils_1 = __nccwpck_require__(9277);
 const job_summary_1 = __nccwpck_require__(1298);
 const evidence_collection_1 = __nccwpck_require__(1180);
-function cleanup() {
-    return __awaiter(this, void 0, void 0, function* () {
-        if (yield shouldSkipCleanup()) {
-            return;
-        }
-        // Run post tasks related to Build Info (auto build publish, evidence collection, job summary)
-        yield buildInfoPostTasks();
-        // Cleanup JFrog CLI servers configuration
-        try {
-            core.startGroup('Cleanup JFrog CLI servers configuration');
-            yield utils_1.Utils.removeJFrogServers();
-        }
-        catch (error) {
-            core.setFailed(error.message);
-        }
-        finally {
-            core.endGroup();
-        }
-    });
+async function cleanup() {
+    if (await shouldSkipCleanup()) {
+        return;
+    }
+    // Run post tasks related to Build Info (auto build publish, evidence collection, job summary)
+    await buildInfoPostTasks();
+    // Cleanup JFrog CLI servers configuration
+    try {
+        core.startGroup('Cleanup JFrog CLI servers configuration');
+        await utils_1.Utils.removeJFrogServers();
+    }
+    catch (error) {
+        core.setFailed(error.message);
+    }
+    finally {
+        core.endGroup();
+    }
 }
 /**
  * Executes post tasks related to build information.
@@ -74,105 +63,99 @@ function cleanup() {
  * 4. Collects evidences if enabled.
  * 5. Generates a job summary if required.
  */
-function buildInfoPostTasks() {
-    return __awaiter(this, void 0, void 0, function* () {
-        const disableAutoBuildPublish = core.getBooleanInput(utils_1.Utils.AUTO_BUILD_PUBLISH_DISABLE);
-        const disableAutoEvidenceCollection = core.getBooleanInput(utils_1.Utils.AUTO_EVIDENCE_COLLECTION_DISABLE);
-        const disableJobSummary = core.getBooleanInput(utils_1.Utils.JOB_SUMMARY_DISABLE) || !job_summary_1.JobSummary.isJobSummarySupported();
-        if (disableAutoBuildPublish && disableAutoEvidenceCollection && disableJobSummary) {
-            core.info(`All post tasks (auto-build-publish, evidence collection, and job-summary) are disabled. Skipping Build Info post tasks.`);
-            return;
-        }
-        // Check connection to Artifactory before proceeding with build info post tasks
-        const pingWorked = yield checkConnectionToArtifactory();
-        // Auto-publish build info if needed
-        if (pingWorked && !disableAutoBuildPublish) {
-            yield collectAndPublishBuildInfoIfNeeded();
-        }
-        else {
-            core.info('Auto build info publish is disabled or jf rt ping failed. Skipping auto build info collection and publishing');
-        }
-        // Collect evidences if not disabled. Evidence use Access token that may not work with jf rt ping.
-        if (!disableAutoEvidenceCollection) {
-            yield (0, evidence_collection_1.collectEvidences)();
-        }
-        else {
-            core.info('Auto evidence collection is disabled. Skipping evidence collection');
-        }
-        // Generate job summary if not disabled and the JFrog CLI version supports it
-        if (pingWorked && !disableJobSummary) {
-            yield generateJobSummary();
-        }
-        else {
-            core.info('Job summary is disabled or jf rt ping failed. Skipping job summary generation');
-        }
-    });
+async function buildInfoPostTasks() {
+    const disableAutoBuildPublish = core.getBooleanInput(utils_1.Utils.AUTO_BUILD_PUBLISH_DISABLE);
+    const disableAutoEvidenceCollection = core.getBooleanInput(utils_1.Utils.AUTO_EVIDENCE_COLLECTION_DISABLE);
+    const disableJobSummary = core.getBooleanInput(utils_1.Utils.JOB_SUMMARY_DISABLE) || !job_summary_1.JobSummary.isJobSummarySupported();
+    if (disableAutoBuildPublish && disableAutoEvidenceCollection && disableJobSummary) {
+        core.info(`All post tasks (auto-build-publish, evidence collection, and job-summary) are disabled. Skipping Build Info post tasks.`);
+        return;
+    }
+    // Check connection to Artifactory before proceeding with build info post tasks
+    const pingWorked = await checkConnectionToArtifactory();
+    // Auto-publish build info if needed
+    if (pingWorked && !disableAutoBuildPublish) {
+        await collectAndPublishBuildInfoIfNeeded();
+    }
+    else {
+        core.info('Auto build info publish is disabled or jf rt ping failed. Skipping auto build info collection and publishing');
+    }
+    // Collect evidences if not disabled. Evidence use Access token that may not work with jf rt ping.
+    if (!disableAutoEvidenceCollection) {
+        await (0, evidence_collection_1.collectEvidences)();
+    }
+    else {
+        core.info('Auto evidence collection is disabled. Skipping evidence collection');
+    }
+    // Generate job summary if not disabled and the JFrog CLI version supports it
+    if (pingWorked && !disableJobSummary) {
+        await generateJobSummary();
+    }
+    else {
+        core.info('Job summary is disabled or jf rt ping failed. Skipping job summary generation');
+    }
 }
-function hasUnpublishedModules(workingDirectory) {
-    return __awaiter(this, void 0, void 0, function* () {
-        // Save the old value of the environment variable to revert it later
-        const origValue = process.env[job_summary_1.JobSummary.JFROG_CLI_COMMAND_SUMMARY_OUTPUT_DIR_ENV];
-        try {
-            core.startGroup('Check for unpublished modules');
-            // Avoid saving a command summary for this dry-run command
-            core.exportVariable(job_summary_1.JobSummary.JFROG_CLI_COMMAND_SUMMARY_OUTPUT_DIR_ENV, '');
-            // Running build-publish command with a dry-run flag to check if there are any unpublished modules, 'silent' to avoid polluting the logs
-            const responseStr = yield utils_1.Utils.runCliAndGetOutput(['rt', 'build-publish', '--dry-run'], { cwd: workingDirectory });
-            // Parse the JSON string to an object
-            const response = JSON.parse(responseStr);
-            // Check if the "modules" key exists and if it's an array with more than one item
-            return response.modules != undefined && Array.isArray(response.modules) && response.modules.length > 0;
-        }
-        catch (error) {
-            core.warning('Failed to check if there are any unpublished modules: ' + error);
-            return false;
-        }
-        finally {
-            core.exportVariable(job_summary_1.JobSummary.JFROG_CLI_COMMAND_SUMMARY_OUTPUT_DIR_ENV, origValue);
-            core.endGroup();
-        }
-    });
+async function hasUnpublishedModules(workingDirectory) {
+    // Save the old value of the environment variable to revert it later
+    const origValue = process.env[job_summary_1.JobSummary.JFROG_CLI_COMMAND_SUMMARY_OUTPUT_DIR_ENV];
+    try {
+        core.startGroup('Check for unpublished modules');
+        // Avoid saving a command summary for this dry-run command
+        core.exportVariable(job_summary_1.JobSummary.JFROG_CLI_COMMAND_SUMMARY_OUTPUT_DIR_ENV, '');
+        // Running build-publish command with a dry-run flag to check if there are any unpublished modules, 'silent' to avoid polluting the logs
+        const responseStr = await utils_1.Utils.runCliAndGetOutput(['rt', 'build-publish', '--dry-run'], { cwd: workingDirectory });
+        // Parse the JSON string to an object
+        const response = JSON.parse(responseStr);
+        // Check if the "modules" key exists and if it's an array with more than one item
+        return response.modules != undefined && Array.isArray(response.modules) && response.modules.length > 0;
+    }
+    catch (error) {
+        core.warning('Failed to check if there are any unpublished modules: ' + error);
+        return false;
+    }
+    finally {
+        core.exportVariable(job_summary_1.JobSummary.JFROG_CLI_COMMAND_SUMMARY_OUTPUT_DIR_ENV, origValue);
+        core.endGroup();
+    }
 }
-function collectAndPublishBuildInfoIfNeeded() {
-    return __awaiter(this, void 0, void 0, function* () {
-        const workingDirectory = getWorkingDirectory();
-        // Check if there are any unpublished modules
-        if (!(yield hasUnpublishedModules(workingDirectory))) {
-            return;
+async function collectAndPublishBuildInfoIfNeeded() {
+    const workingDirectory = getWorkingDirectory();
+    // Check if there are any unpublished modules
+    if (!(await hasUnpublishedModules(workingDirectory))) {
+        return;
+    }
+    // The flow here is to collect Git information before publishing the build info.
+    // We allow this step to fail, and we don't want to fail the entire build publish if they do.
+    try {
+        core.startGroup('Collect the Git information');
+        const gitDir = (__nccwpck_require__(6928).join)(workingDirectory, '.git');
+        if ((__nccwpck_require__(9896).existsSync)(gitDir)) {
+            await utils_1.Utils.runCli(['rt', 'build-add-git'], { cwd: workingDirectory });
         }
-        // The flow here is to collect Git information before publishing the build info.
-        // We allow this step to fail, and we don't want to fail the entire build publish if they do.
-        try {
-            core.startGroup('Collect the Git information');
-            const gitDir = (__nccwpck_require__(6928).join)(workingDirectory, '.git');
-            if ((__nccwpck_require__(9896).existsSync)(gitDir)) {
-                yield utils_1.Utils.runCli(['rt', 'build-add-git'], { cwd: workingDirectory });
-            }
-            else {
-                core.info('No .git directory found. Skipping Git information collection.');
-            }
+        else {
+            core.info('No .git directory found. Skipping Git information collection.');
         }
-        catch (error) {
-            core.warning('Failed while attempting to collect Git information: ' + error);
-        }
-        finally {
-            core.endGroup();
-        }
-        // Publish the build info to Artifactory
-        try {
-            core.startGroup('Publish the build info to JFrog Artifactory');
-            // Set the environment variable to indicate that the build has been automatically published.
-            // This is used by the usage report to track instances of automatic build publication.
-            core.exportVariable('JFROG_CLI_USAGE_AUTO_BUILD_PUBLISHED', 'TRUE');
-            yield utils_1.Utils.runCli(['rt', 'build-publish'], { cwd: workingDirectory });
-        }
-        catch (error) {
-            core.warning('Failed while attempting to publish the build info to JFrog Artifactory: ' + error);
-        }
-        finally {
-            core.endGroup();
-        }
-    });
+    }
+    catch (error) {
+        core.warning('Failed while attempting to collect Git information: ' + error);
+    }
+    finally {
+        core.endGroup();
+    }
+    // Publish the build info to Artifactory
+    try {
+        core.startGroup('Publish the build info to JFrog Artifactory');
+        // Set the environment variable to indicate that the build has been automatically published.
+        // This is used by the usage report to track instances of automatic build publication.
+        core.exportVariable('JFROG_CLI_USAGE_AUTO_BUILD_PUBLISHED', 'TRUE');
+        await utils_1.Utils.runCli(['rt', 'build-publish'], { cwd: workingDirectory });
+    }
+    catch (error) {
+        core.warning('Failed while attempting to publish the build info to JFrog Artifactory: ' + error);
+    }
+    finally {
+        core.endGroup();
+    }
 }
 function getWorkingDirectory() {
     const workingDirectory = process.env.GITHUB_WORKSPACE;
@@ -181,59 +164,53 @@ function getWorkingDirectory() {
     }
     return workingDirectory;
 }
-function checkConnectionToArtifactory() {
-    return __awaiter(this, void 0, void 0, function* () {
-        try {
-            core.startGroup('Checking connection to JFrog Artifactory');
-            const pingResult = yield utils_1.Utils.runCliAndGetOutput(['rt', 'ping']);
-            if (pingResult.trim() !== 'OK') {
-                core.debug(`Ping result: ${pingResult}`);
-                core.warning('Could not connect to Artifactory. Skipping Build Info post tasks.');
-                return false;
-            }
-            return true;
-        }
-        catch (error) {
-            core.warning(`An error occurred while trying to connect to Artifactory: ${error}. Skipping Build Info post tasks.`);
+async function checkConnectionToArtifactory() {
+    try {
+        core.startGroup('Checking connection to JFrog Artifactory');
+        const pingResult = await utils_1.Utils.runCliAndGetOutput(['rt', 'ping']);
+        if (pingResult.trim() !== 'OK') {
+            core.debug(`Ping result: ${pingResult}`);
+            core.warning('Could not connect to Artifactory. Skipping Build Info post tasks.');
             return false;
         }
-        finally {
-            core.endGroup();
-        }
-    });
-}
-function generateJobSummary() {
-    return __awaiter(this, void 0, void 0, function* () {
-        try {
-            core.startGroup('Generating Job Summary');
-            yield utils_1.Utils.runCli(['generate-summary-markdown']);
-            yield job_summary_1.JobSummary.setMarkdownAsJobSummary();
-            yield job_summary_1.JobSummary.populateCodeScanningTab();
-            // Clear files
-            yield job_summary_1.JobSummary.clearCommandSummaryDir();
-        }
-        catch (error) {
-            core.warning('Failed while attempting to generate job summary: ' + error);
-        }
-        finally {
-            core.endGroup();
-        }
-    });
-}
-function shouldSkipCleanup() {
-    return __awaiter(this, void 0, void 0, function* () {
-        if (!utils_1.Utils.loadFromCache(core.getInput(utils_1.Utils.CLI_VERSION_ARG))) {
-            core.warning('Could not find JFrog CLI executable. Skipping cleanup.');
-            return true;
-        }
-        // Skip cleanup if no servers are configured (already removed)
-        const servers = process.env[utils_1.Utils.JFROG_CLI_SERVER_IDS_ENV_VAR];
-        if (!servers) {
-            core.debug('No servers are configured. Skipping cleanup.');
-            return true;
-        }
+        return true;
+    }
+    catch (error) {
+        core.warning(`An error occurred while trying to connect to Artifactory: ${error}. Skipping Build Info post tasks.`);
         return false;
-    });
+    }
+    finally {
+        core.endGroup();
+    }
+}
+async function generateJobSummary() {
+    try {
+        core.startGroup('Generating Job Summary');
+        await utils_1.Utils.runCli(['generate-summary-markdown']);
+        await job_summary_1.JobSummary.setMarkdownAsJobSummary();
+        await job_summary_1.JobSummary.populateCodeScanningTab();
+        // Clear files
+        await job_summary_1.JobSummary.clearCommandSummaryDir();
+    }
+    catch (error) {
+        core.warning('Failed while attempting to generate job summary: ' + error);
+    }
+    finally {
+        core.endGroup();
+    }
+}
+async function shouldSkipCleanup() {
+    if (!utils_1.Utils.loadFromCache(core.getInput(utils_1.Utils.CLI_VERSION_ARG))) {
+        core.warning('Could not find JFrog CLI executable. Skipping cleanup.');
+        return true;
+    }
+    // Skip cleanup if no servers are configured (already removed)
+    const servers = process.env[utils_1.Utils.JFROG_CLI_SERVER_IDS_ENV_VAR];
+    if (!servers) {
+        core.debug('No servers are configured. Skipping cleanup.');
+        return true;
+    }
+    return false;
 }
 cleanup();
 
@@ -268,15 +245,6 @@ var __importStar = (this && this.__importStar) || function (mod) {
     __setModuleDefault(result, mod);
     return result;
 };
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.collectEvidences = collectEvidences;
 exports.getSigstoreBundlePaths = getSigstoreBundlePaths;
@@ -289,166 +257,157 @@ const path = __importStar(__nccwpck_require__(6928));
  * Collects evidences from the current workflow.
  * This function first checks if attestation files exist, then checks if evidence collection is supported by the Artifactory server.
  */
-function collectEvidences() {
-    return __awaiter(this, void 0, void 0, function* () {
-        var _a;
-        try {
-            core.startGroup('Collecting evidence');
-            // Check authentication method first - evidence collection requires access token or OIDC
-            const credentials = utils_1.Utils.collectJfrogCredentialsFromEnvVars();
-            if (!credentials.accessToken && !credentials.oidcProviderName && (credentials.username || credentials.password)) {
-                core.info('Evidence collection does not support authentication with username and password. Skipping evidence collection.');
-                return;
-            }
-            // Check if attestation files exist first to fail fast
-            const filePaths = yield getSigstoreBundlePaths();
-            if (filePaths.length === 0) {
-                return;
-            }
-            // Check if evidence collection is supported by the server
-            const evidenceConfig = yield getEvidenceConfiguration();
-            if (!evidenceConfig.external_evidence_collection_supported) {
-                return;
-            }
-            // Use a default limit if the server doesn't provide one
-            const maxFileSizeMB = (_a = evidenceConfig.evidence_file_size_limit_mb) !== null && _a !== void 0 ? _a : 16;
-            core.info(`Evidence collection is supported. Maximum file size: ${maxFileSizeMB} MB`);
-            // Create evidence for each sigstore bundle file
-            yield createEvidenceFromSigstoreBundles(maxFileSizeMB, filePaths);
+async function collectEvidences() {
+    try {
+        core.startGroup('Collecting evidence');
+        // Check authentication method first - evidence collection requires access token or OIDC
+        const credentials = utils_1.Utils.collectJfrogCredentialsFromEnvVars();
+        if (!credentials.accessToken && !credentials.oidcProviderName && (credentials.username || credentials.password)) {
+            core.info('Evidence collection does not support authentication with username and password. Skipping evidence collection.');
+            return;
         }
-        catch (error) {
-            core.warning('Failed while attempting to collect evidences: ' + error);
+        // Check if attestation files exist first to fail fast
+        const filePaths = await getSigstoreBundlePaths();
+        if (filePaths.length === 0) {
+            return;
         }
-        finally {
-            core.endGroup();
+        // Check if evidence collection is supported by the server
+        const evidenceConfig = await getEvidenceConfiguration();
+        if (!evidenceConfig.external_evidence_collection_supported) {
+            return;
         }
-    });
+        // Use a default limit if the server doesn't provide one
+        const maxFileSizeMB = evidenceConfig.evidence_file_size_limit_mb ?? 16;
+        core.info(`Evidence collection is supported. Maximum file size: ${maxFileSizeMB} MB`);
+        // Create evidence for each sigstore bundle file
+        await createEvidenceFromSigstoreBundles(maxFileSizeMB, filePaths);
+    }
+    catch (error) {
+        core.warning('Failed while attempting to collect evidences: ' + error);
+    }
+    finally {
+        core.endGroup();
+    }
 }
 /**
  * Checks if evidence collection is supported by the Artifactory server.
  * @returns EvidenceConfigResponse with support status and max file size
  */
-function getEvidenceConfiguration() {
-    return __awaiter(this, void 0, void 0, function* () {
-        const credentials = utils_1.Utils.collectJfrogCredentialsFromEnvVars();
-        if (!credentials.jfrogUrl) {
-            throw new Error('JF_URL is required to check evidence support');
+async function getEvidenceConfiguration() {
+    const credentials = utils_1.Utils.collectJfrogCredentialsFromEnvVars();
+    if (!credentials.jfrogUrl) {
+        throw new Error('JF_URL is required to check evidence support');
+    }
+    // Get access token for authentication
+    let accessToken = credentials.accessToken;
+    // Try to get access token if not available
+    if (!accessToken && credentials.oidcProviderName) {
+        // Import OidcUtils dynamically to avoid circular dependency
+        const { OidcUtils } = await Promise.resolve().then(() => __importStar(__nccwpck_require__(5315)));
+        accessToken = await OidcUtils.exchangeOidcToken(credentials);
+    }
+    // Check if we have access token available
+    if (!accessToken) {
+        throw new Error('No access token available for authentication. Evidence collection requires access token authentication.');
+    }
+    // Remove trailing slash from jfrogUrl to avoid double slashes when appending the API path
+    const url = `${credentials.jfrogUrl.replace(/\/$/, '')}/evidence/api/v1/config/`;
+    const httpClient = new http_client_1.HttpClient();
+    const headers = {
+        Authorization: `Bearer ${accessToken}`,
+    };
+    core.debug(`Getting evidence configuration at: ${url}`);
+    let response;
+    let body;
+    try {
+        response = await httpClient.get(url, headers);
+        body = await response.readBody();
+    }
+    catch (error) {
+        core.warning(`Failed to get evidence configuration (network error or server unavailable): ${error}`);
+        return { external_evidence_collection_supported: false, evidence_file_size_limit_mb: 0 };
+    }
+    // 200 OK
+    if (response.message.statusCode !== 200) {
+        // 401 Unauthorized
+        if (response.message.statusCode === 401) {
+            core.warning(`Failed to get evidence configuration. Given credentials are not sufficient` +
+                ` to create evidence in the JFrog platform, Response: ${body}`);
         }
-        // Get access token for authentication
-        let accessToken = credentials.accessToken;
-        // Try to get access token if not available
-        if (!accessToken && credentials.oidcProviderName) {
-            // Import OidcUtils dynamically to avoid circular dependency
-            const { OidcUtils } = yield Promise.resolve().then(() => __importStar(__nccwpck_require__(5315)));
-            accessToken = yield OidcUtils.exchangeOidcToken(credentials);
+        else {
+            core.warning(`Failed to get evidence configuration. Status: ${response.message.statusCode}, Response: ${body}`);
         }
-        // Check if we have access token available
-        if (!accessToken) {
-            throw new Error('No access token available for authentication. Evidence collection requires access token authentication.');
+        return { external_evidence_collection_supported: false, evidence_file_size_limit_mb: 0 };
+    }
+    try {
+        const config = JSON.parse(body);
+        if (!config.external_evidence_collection_supported) {
+            core.info("Evidence collection is not supported by Artifactory's license type. Skipping evidence collection.");
         }
-        // Remove trailing slash from jfrogUrl to avoid double slashes when appending the API path
-        const url = `${credentials.jfrogUrl.replace(/\/$/, '')}/evidence/api/v1/config/`;
-        const httpClient = new http_client_1.HttpClient();
-        const headers = {
-            Authorization: `Bearer ${accessToken}`,
-        };
-        core.debug(`Getting evidence configuration at: ${url}`);
-        let response;
-        let body;
-        try {
-            response = yield httpClient.get(url, headers);
-            body = yield response.readBody();
-        }
-        catch (error) {
-            core.warning(`Failed to get evidence configuration (network error or server unavailable): ${error}`);
-            return { external_evidence_collection_supported: false, evidence_file_size_limit_mb: 0 };
-        }
-        // 200 OK
-        if (response.message.statusCode !== 200) {
-            // 401 Unauthorized
-            if (response.message.statusCode === 401) {
-                core.warning(`Failed to get evidence configuration. Given credentials are not sufficient` +
-                    ` to create evidence in the JFrog platform, Response: ${body}`);
-            }
-            else {
-                core.warning(`Failed to get evidence configuration. Status: ${response.message.statusCode}, Response: ${body}`);
-            }
-            return { external_evidence_collection_supported: false, evidence_file_size_limit_mb: 0 };
-        }
-        try {
-            const config = JSON.parse(body);
-            if (!config.external_evidence_collection_supported) {
-                core.info("Evidence collection is not supported by Artifactory's license type. Skipping evidence collection.");
-            }
-            return config;
-        }
-        catch (error) {
-            core.warning(`Failed to parse evidence config response: ${error}`);
-            return { external_evidence_collection_supported: false, evidence_file_size_limit_mb: 0 };
-        }
-    });
+        return config;
+    }
+    catch (error) {
+        core.warning(`Failed to parse evidence config response: ${error}`);
+        return { external_evidence_collection_supported: false, evidence_file_size_limit_mb: 0 };
+    }
 }
 /**
  * Read and parse sigstore bundle file paths from the attestation paths file
  * @returns Array of file paths, or empty array if file doesn't exist or is empty
  */
-function getSigstoreBundlePaths() {
-    return __awaiter(this, void 0, void 0, function* () {
-        const runnerTemp = process.env.RUNNER_TEMP;
-        if (!runnerTemp) {
-            core.warning('RUNNER_TEMP environment variable is not set. Skipping evidence creation.');
-            return [];
-        }
-        const attestationPathsFile = path.join(runnerTemp, 'created_attestation_paths.txt');
-        try {
-            // Check if the file exists
-            yield fs_1.promises.access(attestationPathsFile);
-        }
-        catch (error) {
-            core.info(`No attestation paths file found. Skipping evidence creation. Searched for: ${attestationPathsFile}. Error: ${error}`);
-            return [];
-        }
-        // Read the file content
-        core.info(`Reading attestation paths file: ${attestationPathsFile}`);
-        const fileContent = yield fs_1.promises.readFile(attestationPathsFile, 'utf8');
-        const filePaths = fileContent.split('\n').filter((line) => line.trim() !== '');
-        if (filePaths.length === 0) {
-            core.info('No sigstore bundle files found in attestation paths file.');
-            return [];
-        }
-        core.info(`Found ${filePaths.length} sigstore bundle file(s) to process.`);
-        if (core.isDebug()) {
-            filePaths.forEach((filePath) => {
-                core.debug(`Sigstore bundle file found: ${filePath}`);
-            });
-        }
-        return filePaths;
-    });
+async function getSigstoreBundlePaths() {
+    const runnerTemp = process.env.RUNNER_TEMP;
+    if (!runnerTemp) {
+        core.warning('RUNNER_TEMP environment variable is not set. Skipping evidence creation.');
+        return [];
+    }
+    const attestationPathsFile = path.join(runnerTemp, 'created_attestation_paths.txt');
+    try {
+        // Check if the file exists
+        await fs_1.promises.access(attestationPathsFile);
+    }
+    catch (error) {
+        core.info(`No attestation paths file found. Skipping evidence creation. Searched for: ${attestationPathsFile}. Error: ${error}`);
+        return [];
+    }
+    // Read the file content
+    core.info(`Reading attestation paths file: ${attestationPathsFile}`);
+    const fileContent = await fs_1.promises.readFile(attestationPathsFile, 'utf8');
+    const filePaths = fileContent.split('\n').filter((line) => line.trim() !== '');
+    if (filePaths.length === 0) {
+        core.info('No sigstore bundle files found in attestation paths file.');
+        return [];
+    }
+    core.info(`Found ${filePaths.length} sigstore bundle file(s) to process.`);
+    if (core.isDebug()) {
+        filePaths.forEach((filePath) => {
+            core.debug(`Sigstore bundle file found: ${filePath}`);
+        });
+    }
+    return filePaths;
 }
 /**
  * Creates evidence for sigstore bundle files.
  * @param maxFileSizeMB Maximum allowed file size in MB
  * @param filePaths Array of file paths to process
  */
-function createEvidenceFromSigstoreBundles(maxFileSizeMB, filePaths) {
-    return __awaiter(this, void 0, void 0, function* () {
-        for (const filePath of filePaths) {
-            try {
-                const fileStats = yield fs_1.promises.stat(filePath);
-                const fileSizeMB = fileStats.size / (1024 * 1024); // Convert bytes to MB
-                if (fileSizeMB > maxFileSizeMB) {
-                    core.warning(`Skipping ${filePath}: File size (${fileSizeMB.toFixed(2)} MB) exceeds maximum allowed size (${maxFileSizeMB} MB)`);
-                    continue;
-                }
-                core.info(`Creating evidence for: ${filePath}`);
-                const output = yield utils_1.Utils.runCliAndGetOutput(['evd', 'create', '--sigstore-bundle', filePath, '--provider-id', 'github']);
-                core.info(`Evidence created successfully for ${filePath}: ${output}`);
+async function createEvidenceFromSigstoreBundles(maxFileSizeMB, filePaths) {
+    for (const filePath of filePaths) {
+        try {
+            const fileStats = await fs_1.promises.stat(filePath);
+            const fileSizeMB = fileStats.size / (1024 * 1024); // Convert bytes to MB
+            if (fileSizeMB > maxFileSizeMB) {
+                core.warning(`Skipping ${filePath}: File size (${fileSizeMB.toFixed(2)} MB) exceeds maximum allowed size (${maxFileSizeMB} MB)`);
+                continue;
             }
-            catch (error) {
-                core.warning(`Failed to create evidence for ${filePath}: ${error}`);
-            }
+            core.info(`Creating evidence for: ${filePath}`);
+            const output = await utils_1.Utils.runCliAndGetOutput(['evd', 'create', '--sigstore-bundle', filePath, '--provider-id', 'github']);
+            core.info(`Evidence created successfully for ${filePath}: ${output}`);
         }
-    });
+        catch (error) {
+            core.warning(`Failed to create evidence for ${filePath}: ${error}`);
+        }
+    }
 }
 
 
@@ -482,15 +441,6 @@ var __importStar = (this && this.__importStar) || function (mod) {
     __setModuleDefault(result, mod);
     return result;
 };
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -507,6 +457,37 @@ const http_client_1 = __nccwpck_require__(4844);
 const os_1 = __nccwpck_require__(857);
 const utils_1 = __nccwpck_require__(9277);
 class JobSummary {
+    // Directory name which holds markdown files for the Workflow summary
+    static JOB_SUMMARY_DIR_NAME = 'jfrog-command-summary';
+    // Directory name which holds security command summary files
+    static SECURITY_DIR_NAME = 'security';
+    // Directory name which holds sarifs files for the code scanning tab
+    static SARIF_REPORTS_DIR_NAME = 'sarif-reports';
+    // JFrog CLI command summary output directory environment variable
+    static JFROG_CLI_COMMAND_SUMMARY_OUTPUT_DIR_ENV = 'JFROG_CLI_COMMAND_SUMMARY_OUTPUT_DIR';
+    // Minimum JFrog CLI version supported for job summary command
+    static MIN_CLI_VERSION_JOB_SUMMARY = '2.66.0';
+    // Code scanning sarif expected file extension.
+    static CODE_SCANNING_FINAL_SARIF_FILE = 'final.sarif';
+    // URL for the markdown header image
+    // This is hosted statically because its usage is outside the context of the JFrog setup action.
+    // It cannot be linked to the repository, as GitHub serves the image from a CDN,
+    // which gets blocked by the browser, resulting in an empty image.
+    static MARKDOWN_HEADER_PNG_URL = 'https://media.jfrog.com/wp-content/uploads/2024/09/02161430/jfrog-job-summary.svg';
+    // Flag to indicate if the summary header is accessible, can be undefined if not checked yet.
+    static isSummaryHeaderAccessible = undefined;
+    // Job ID query parameter key
+    static JOB_ID_PARAM_KEY = 'job_id';
+    // Run ID query parameter key
+    static RUN_ID_PARAM_KEY = 'run_id';
+    // Git repository query parameter key
+    static GIT_REPO_PARAM_KEY = 'git_repo';
+    // Source query parameter indicating the source of the request
+    static SOURCE_PARAM_KEY = 's';
+    static SOURCE_PARAM_VALUE = '1';
+    // Metric query parameter indicating the metric type
+    static METRIC_PARAM_KEY = 'm';
+    static METRIC_PARAM_VALUE = '1';
     /**
      * Enabling job summary is done by setting the output dir for the summaries.
      * If the output dir is not set, the CLI won't generate the summary Markdown files.
@@ -525,45 +506,41 @@ class JobSummary {
      * collects existing section markdown files generated by the CLI,
      * and constructs a single Markdown file, to be displayed in the GitHub UI.
      */
-    static setMarkdownAsJobSummary() {
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                // Read all sections and construct the final Markdown file
-                const markdownContent = yield this.readCommandSummaryMarkdown();
-                if (markdownContent.length == 0) {
-                    core.debug('No job summary file found. Workflow summary will not be generated.');
-                    return;
-                }
-                // Write to GitHub's job summary
-                core.summary.addRaw(markdownContent, true);
-                yield core.summary.write({ overwrite: true });
+    static async setMarkdownAsJobSummary() {
+        try {
+            // Read all sections and construct the final Markdown file
+            const markdownContent = await this.readCommandSummaryMarkdown();
+            if (markdownContent.length == 0) {
+                core.debug('No job summary file found. Workflow summary will not be generated.');
+                return;
             }
-            catch (error) {
-                core.warning(`Failed to generate Workflow summary: ${error}`);
-            }
-        });
+            // Write to GitHub's job summary
+            core.summary.addRaw(markdownContent, true);
+            await core.summary.write({ overwrite: true });
+        }
+        catch (error) {
+            core.warning(`Failed to generate Workflow summary: ${error}`);
+        }
     }
     /**
      * Populates the code scanning SARIF (if generated by scan commands) to the code scanning tab in GitHub.
      */
-    static populateCodeScanningTab() {
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                const encodedSarif = yield this.getCodeScanningEncodedSarif();
-                if (!encodedSarif) {
-                    return;
-                }
-                const token = process.env.JF_GIT_TOKEN;
-                if (!token) {
-                    console.info('No token provided for uploading code scanning sarif files.');
-                    return;
-                }
-                yield this.uploadCodeScanningSarif(encodedSarif, token);
+    static async populateCodeScanningTab() {
+        try {
+            const encodedSarif = await this.getCodeScanningEncodedSarif();
+            if (!encodedSarif) {
+                return;
             }
-            catch (error) {
-                core.warning(`Failed populating code scanning sarif: ${error}`);
+            const token = process.env.JF_GIT_TOKEN;
+            if (!token) {
+                console.info('No token provided for uploading code scanning sarif files.');
+                return;
             }
-        });
+            await this.uploadCodeScanningSarif(encodedSarif, token);
+        }
+        catch (error) {
+            core.warning(`Failed populating code scanning sarif: ${error}`);
+        }
     }
     /**
      * Uploads a SARIF (Static Analysis Results Interchange Format) file to GitHub's code scanning API.
@@ -575,24 +552,21 @@ class JobSummary {
      *                Must have 'security_events: write' and 'contents: read' permissions.
      * @throws Will throw an error if the HTTP response status is not in the 2xx range or if authentication fails.
      */
-    static uploadCodeScanningSarif(encodedSarif, token) {
-        return __awaiter(this, void 0, void 0, function* () {
-            var _a, _b, _c;
-            const inputBaseUrl = utils_1.Utils.getGheBaseUrl();
-            const octokit = inputBaseUrl ? github.getOctokit(token, { baseUrl: inputBaseUrl }) : github.getOctokit(token);
-            const response = yield octokit.request('POST /repos/{owner}/{repo}/code-scanning/sarifs', {
-                owner: github.context.repo.owner,
-                repo: github.context.repo.repo,
-                commit_sha: github.context.sha,
-                ref: github.context.ref,
-                sarif: encodedSarif,
-            });
-            if (response.status < 200 || response.status >= 300) {
-                const usedBaseUrl = ((_c = (_b = (_a = octokit.request) === null || _a === void 0 ? void 0 : _a.endpoint) === null || _b === void 0 ? void 0 : _b.DEFAULTS) === null || _c === void 0 ? void 0 : _c.baseUrl) || 'unknown';
-                throw new Error(`Failed to upload SARIF file (status ${response.status}). baseUrl=${usedBaseUrl}; response=` + JSON.stringify(response));
-            }
-            core.info('SARIF file uploaded successfully');
+    static async uploadCodeScanningSarif(encodedSarif, token) {
+        const inputBaseUrl = utils_1.Utils.getGheBaseUrl();
+        const octokit = inputBaseUrl ? github.getOctokit(token, { baseUrl: inputBaseUrl }) : github.getOctokit(token);
+        const response = await octokit.request('POST /repos/{owner}/{repo}/code-scanning/sarifs', {
+            owner: github.context.repo.owner,
+            repo: github.context.repo.repo,
+            commit_sha: github.context.sha,
+            ref: github.context.ref,
+            sarif: encodedSarif,
         });
+        if (response.status < 200 || response.status >= 300) {
+            const usedBaseUrl = octokit.request?.endpoint?.DEFAULTS?.baseUrl || 'unknown';
+            throw new Error(`Failed to upload SARIF file (status ${response.status}). baseUrl=${usedBaseUrl}; response=` + JSON.stringify(response));
+        }
+        core.info('SARIF file uploaded successfully');
     }
     /**
      * Compresses the input sarif content using gzip and encodes it to base64. This is required by the code-scanning/sarif API.
@@ -600,59 +574,51 @@ class JobSummary {
      * @returns The compressed and encoded string.
      * @private
      */
-    static compressAndEncodeSarif(input) {
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                const compressed = yield (0, util_1.promisify)(zlib_1.gzip)(input);
-                return compressed.toString('base64');
-            }
-            catch (error) {
-                throw new Error('Compression of sarif file failed: ' + error);
-            }
-        });
+    static async compressAndEncodeSarif(input) {
+        try {
+            const compressed = await (0, util_1.promisify)(zlib_1.gzip)(input);
+            return compressed.toString('base64');
+        }
+        catch (error) {
+            throw new Error('Compression of sarif file failed: ' + error);
+        }
     }
     /**
      * Each section should prepare a file called markdown.md.
      * This function reads each section file and wraps it with a markdown header
      * @returns <string> the content of the markdown file as string, warped in a collapsable section.
      */
-    static readCommandSummaryMarkdown() {
-        return __awaiter(this, void 0, void 0, function* () {
-            let markdownContent = yield this.readMarkdownContent();
-            if (markdownContent === '') {
-                return '';
-            }
-            // Check if the header can be accessed via the internet to decide if to use the image or the text header
-            this.isSummaryHeaderAccessible = yield this.isHeaderPngAccessible();
-            core.debug('Header image is accessible: ' + this.isSummaryHeaderAccessible);
-            return this.wrapContent(markdownContent);
-        });
+    static async readCommandSummaryMarkdown() {
+        let markdownContent = await this.readMarkdownContent();
+        if (markdownContent === '') {
+            return '';
+        }
+        // Check if the header can be accessed via the internet to decide if to use the image or the text header
+        this.isSummaryHeaderAccessible = await this.isHeaderPngAccessible();
+        core.debug('Header image is accessible: ' + this.isSummaryHeaderAccessible);
+        return this.wrapContent(markdownContent);
     }
     /**
      * Reads the combined SARIF file, compresses and encodes it to match the code-scanning/sarif API requirements.
      * @returns <string[]> the paths of the code scanning sarif files.
      */
-    static getCodeScanningEncodedSarif() {
-        return __awaiter(this, void 0, void 0, function* () {
-            const finalSarifFile = path_1.default.join(this.getJobOutputDirectoryPath(), this.SECURITY_DIR_NAME, this.SARIF_REPORTS_DIR_NAME, this.CODE_SCANNING_FINAL_SARIF_FILE);
-            if (!(0, fs_1.existsSync)(finalSarifFile)) {
-                console.debug('No code scanning sarif file was found.');
-                return '';
-            }
-            // Read the SARIF file, compress and encode it to match the code-scanning/sarif API requirements.
-            const sarif = yield fs_1.promises.readFile(finalSarifFile, 'utf-8');
-            return yield this.compressAndEncodeSarif(sarif);
-        });
-    }
-    static readMarkdownContent() {
-        return __awaiter(this, void 0, void 0, function* () {
-            const markdownFilePath = path_1.default.join(this.getJobOutputDirectoryPath(), 'markdown.md');
-            if ((0, fs_1.existsSync)(markdownFilePath)) {
-                return yield fs_1.promises.readFile(markdownFilePath, 'utf-8');
-            }
-            core.debug(`No job summary file found. at ${markdownFilePath}.`);
+    static async getCodeScanningEncodedSarif() {
+        const finalSarifFile = path_1.default.join(this.getJobOutputDirectoryPath(), this.SECURITY_DIR_NAME, this.SARIF_REPORTS_DIR_NAME, this.CODE_SCANNING_FINAL_SARIF_FILE);
+        if (!(0, fs_1.existsSync)(finalSarifFile)) {
+            console.debug('No code scanning sarif file was found.');
             return '';
-        });
+        }
+        // Read the SARIF file, compress and encode it to match the code-scanning/sarif API requirements.
+        const sarif = await fs_1.promises.readFile(finalSarifFile, 'utf-8');
+        return await this.compressAndEncodeSarif(sarif);
+    }
+    static async readMarkdownContent() {
+        const markdownFilePath = path_1.default.join(this.getJobOutputDirectoryPath(), 'markdown.md');
+        if ((0, fs_1.existsSync)(markdownFilePath)) {
+            return await fs_1.promises.readFile(markdownFilePath, 'utf-8');
+        }
+        core.debug(`No job summary file found. at ${markdownFilePath}.`);
+        return '';
     }
     static getMarkdownHeader() {
         let mainTitle;
@@ -699,12 +665,10 @@ class JobSummary {
         }
         return path_1.default.join(outputDir, this.JOB_SUMMARY_DIR_NAME);
     }
-    static clearCommandSummaryDir() {
-        return __awaiter(this, void 0, void 0, function* () {
-            const outputDir = this.getJobOutputDirectoryPath();
-            core.debug('Removing command summary directory: ' + outputDir);
-            yield fs_1.promises.rm(outputDir, { recursive: true });
-        });
+    static async clearCommandSummaryDir() {
+        const outputDir = this.getJobOutputDirectoryPath();
+        core.debug('Removing command summary directory: ' + outputDir);
+        await fs_1.promises.rm(outputDir, { recursive: true });
     }
     static wrapContent(fileContent) {
         return ('<details>\n\n<summary>JFrog Job Summary</summary>\n\n' +
@@ -734,29 +698,27 @@ class JobSummary {
      * Saves the result in a static variable to avoid multiple checks.
      * @private
      */
-    static isHeaderPngAccessible() {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (this.isSummaryHeaderAccessible != undefined) {
-                return this.isSummaryHeaderAccessible;
-            }
-            const url = this.MARKDOWN_HEADER_PNG_URL;
-            const httpClient = new http_client_1.HttpClient('jfrog-setup-action', [], {
-                socketTimeout: 5000,
-            });
-            try {
-                // Set timeout to 5 seconds
-                const response = yield httpClient.head(url);
-                this.isSummaryHeaderAccessible = response.message.statusCode === 200;
-            }
-            catch (error) {
-                core.warning('No internet access to the header image, using the text header instead.');
-                this.isSummaryHeaderAccessible = false;
-            }
-            finally {
-                httpClient.dispose();
-            }
+    static async isHeaderPngAccessible() {
+        if (this.isSummaryHeaderAccessible != undefined) {
             return this.isSummaryHeaderAccessible;
+        }
+        const url = this.MARKDOWN_HEADER_PNG_URL;
+        const httpClient = new http_client_1.HttpClient('jfrog-setup-action', [], {
+            socketTimeout: 5000,
         });
+        try {
+            // Set timeout to 5 seconds
+            const response = await httpClient.head(url);
+            this.isSummaryHeaderAccessible = response.message.statusCode === 200;
+        }
+        catch (error) {
+            core.warning('No internet access to the header image, using the text header instead.');
+            this.isSummaryHeaderAccessible = false;
+        }
+        finally {
+            httpClient.dispose();
+        }
+        return this.isSummaryHeaderAccessible;
     }
     static getTempDirectory() {
         // Determine the temporary directory path, prioritizing RUNNER_TEMP
@@ -777,37 +739,6 @@ class JobSummary {
     }
 }
 exports.JobSummary = JobSummary;
-// Directory name which holds markdown files for the Workflow summary
-JobSummary.JOB_SUMMARY_DIR_NAME = 'jfrog-command-summary';
-// Directory name which holds security command summary files
-JobSummary.SECURITY_DIR_NAME = 'security';
-// Directory name which holds sarifs files for the code scanning tab
-JobSummary.SARIF_REPORTS_DIR_NAME = 'sarif-reports';
-// JFrog CLI command summary output directory environment variable
-JobSummary.JFROG_CLI_COMMAND_SUMMARY_OUTPUT_DIR_ENV = 'JFROG_CLI_COMMAND_SUMMARY_OUTPUT_DIR';
-// Minimum JFrog CLI version supported for job summary command
-JobSummary.MIN_CLI_VERSION_JOB_SUMMARY = '2.66.0';
-// Code scanning sarif expected file extension.
-JobSummary.CODE_SCANNING_FINAL_SARIF_FILE = 'final.sarif';
-// URL for the markdown header image
-// This is hosted statically because its usage is outside the context of the JFrog setup action.
-// It cannot be linked to the repository, as GitHub serves the image from a CDN,
-// which gets blocked by the browser, resulting in an empty image.
-JobSummary.MARKDOWN_HEADER_PNG_URL = 'https://media.jfrog.com/wp-content/uploads/2024/09/02161430/jfrog-job-summary.svg';
-// Flag to indicate if the summary header is accessible, can be undefined if not checked yet.
-JobSummary.isSummaryHeaderAccessible = undefined;
-// Job ID query parameter key
-JobSummary.JOB_ID_PARAM_KEY = 'job_id';
-// Run ID query parameter key
-JobSummary.RUN_ID_PARAM_KEY = 'run_id';
-// Git repository query parameter key
-JobSummary.GIT_REPO_PARAM_KEY = 'git_repo';
-// Source query parameter indicating the source of the request
-JobSummary.SOURCE_PARAM_KEY = 's';
-JobSummary.SOURCE_PARAM_VALUE = '1';
-// Metric query parameter indicating the metric type
-JobSummary.METRIC_PARAM_KEY = 'm';
-JobSummary.METRIC_PARAM_VALUE = '1';
 
 
 /***/ }),
@@ -844,15 +775,6 @@ var __importStar = (this && this.__importStar) || function (mod) {
     __setModuleDefault(result, mod);
     return result;
 };
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -866,6 +788,17 @@ const semver_1 = __nccwpck_require__(2088);
 const utils_1 = __nccwpck_require__(9277);
 const js_yaml_1 = __nccwpck_require__(4281);
 class OidcUtils {
+    static MIN_CLI_OIDC_VERSION = '2.75.0';
+    // Application yaml root key
+    static APPLICATION_ROOT_YML = 'application';
+    // Application Config file key, yaml should look like:
+    // application:
+    //   key: <application key>
+    static KEY = 'key';
+    // Config file directory name
+    static JF_CONFIG_DIR_NAME = '.jfrog';
+    // Config file name
+    static JF_CONFIG_FILE_NAME = 'config.yml';
     /*
     Currently, OIDC authentication can be handled in two ways due to CLI version limitations:
     1. Manually call the REST API from this codebase.
@@ -876,88 +809,82 @@ class OidcUtils {
     for further use by the users, this cannot be done in secure way using jf config add command.
 
     */
-    static exchangeOidcToken(jfrogCredentials) {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (!jfrogCredentials.jfrogUrl) {
-                throw new Error(`JF_URL must be provided when oidc-provider-name is specified`);
-            }
-            // Get OIDC token ID from GitHub
-            try {
-                core.debug('Attempting to fetch JSON Web Token (JWT) ID token with audience value: ' + jfrogCredentials.oidcAudience);
-                jfrogCredentials.oidcTokenId = yield core.getIDToken(jfrogCredentials.oidcAudience);
-            }
-            catch (error) {
-                throw new Error(`Failed to fetch OpenID Connect JSON Web Token: ${error.message}`);
-            }
-            // Version should be more than min version
-            // If CLI_REMOTE_ARG specified, we have to fetch token before we can download the CLI.
-            if (this.isCLIVersionOidcSupported() && !core.getInput(utils_1.Utils.CLI_REMOTE_ARG)) {
-                core.debug('Using CLI exchange-oidc-token..');
-                return yield this.exchangeOIDCTokenAndExportStepOutputs(jfrogCredentials);
-            }
-            // Fallback to manual OIDC exchange for backward compatibility
-            core.debug('Using Manual OIDC Auth Method..');
-            // Exchanges the token and set as access token in the credential's object
-            let token = yield this.manualExchangeOidc(jfrogCredentials);
-            if (!token) {
-                throw new Error('Failed to manually exchange OIDC token via RESTApi');
-            }
-            return token;
-        });
+    static async exchangeOidcToken(jfrogCredentials) {
+        if (!jfrogCredentials.jfrogUrl) {
+            throw new Error(`JF_URL must be provided when oidc-provider-name is specified`);
+        }
+        // Get OIDC token ID from GitHub
+        try {
+            core.debug('Attempting to fetch JSON Web Token (JWT) ID token with audience value: ' + jfrogCredentials.oidcAudience);
+            jfrogCredentials.oidcTokenId = await core.getIDToken(jfrogCredentials.oidcAudience);
+        }
+        catch (error) {
+            throw new Error(`Failed to fetch OpenID Connect JSON Web Token: ${error.message}`);
+        }
+        // Version should be more than min version
+        // If CLI_REMOTE_ARG specified, we have to fetch token before we can download the CLI.
+        if (this.isCLIVersionOidcSupported() && !core.getInput(utils_1.Utils.CLI_REMOTE_ARG)) {
+            core.debug('Using CLI exchange-oidc-token..');
+            return await this.exchangeOIDCTokenAndExportStepOutputs(jfrogCredentials);
+        }
+        // Fallback to manual OIDC exchange for backward compatibility
+        core.debug('Using Manual OIDC Auth Method..');
+        // Exchanges the token and set as access token in the credential's object
+        let token = await this.manualExchangeOidc(jfrogCredentials);
+        if (!token) {
+            throw new Error('Failed to manually exchange OIDC token via RESTApi');
+        }
+        return token;
     }
     /**
      * Uses the CLI to exchange OIDC token for an access token and sets outputs.
      */
-    static exchangeOIDCTokenAndExportStepOutputs(creds) {
-        return __awaiter(this, void 0, void 0, function* () {
-            let output;
-            if (creds.oidcProviderName === undefined || creds.oidcTokenId === undefined || creds.jfrogUrl === undefined) {
-                throw new Error('Missing one or more required fields: OIDC provider name, token ID, or JFrog Platform URL.');
-            }
-            const args = ['eot', creds.oidcProviderName, creds.oidcTokenId, '--url', creds.jfrogUrl];
-            if (creds.oidcAudience !== '') {
-                args.push('--oidc-audience', creds.oidcAudience);
-            }
-            core.debug('Running CLI command: ' + args.join(' '));
-            output = yield utils_1.Utils.runCliAndGetOutput(args, { silent: true });
-            const { accessToken, username } = this.extractValuesFromOIDCToken(output);
-            this.setOidcStepOutputs(username, accessToken);
-            return accessToken;
-        });
+    static async exchangeOIDCTokenAndExportStepOutputs(creds) {
+        let output;
+        if (creds.oidcProviderName === undefined || creds.oidcTokenId === undefined || creds.jfrogUrl === undefined) {
+            throw new Error('Missing one or more required fields: OIDC provider name, token ID, or JFrog Platform URL.');
+        }
+        const args = ['eot', creds.oidcProviderName, creds.oidcTokenId, '--url', creds.jfrogUrl];
+        if (creds.oidcAudience !== '') {
+            args.push('--oidc-audience', creds.oidcAudience);
+        }
+        core.debug('Running CLI command: ' + args.join(' '));
+        output = await utils_1.Utils.runCliAndGetOutput(args, { silent: true });
+        const { accessToken, username } = this.extractValuesFromOIDCToken(output);
+        this.setOidcStepOutputs(username, accessToken);
+        return accessToken;
     }
     /**
      * Performs a manual token exchange via HTTP for older CLI versions.
      */
-    static manualExchangeOidc(creds) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const url = creds.jfrogUrl;
-            const providerName = creds.oidcProviderName;
-            const applicationKey = yield this.getApplicationKey();
-            if (!url || !providerName) {
-                throw new Error('Missing required JFrog URL or OIDC provider name.');
-            }
-            if (!creds.oidcTokenId) {
-                throw new Error('Missing required OIDC token ID.');
-            }
-            const exchangeUrl = url.replace(/\/$/, '') + '/access/api/v1/oidc/token';
-            const payload = this.buildOidcTokenExchangePayload(creds.oidcTokenId, providerName, applicationKey);
-            const httpClient = new http_client_1.HttpClient();
-            const headers = { 'Content-Type': 'application/json' };
-            const response = yield httpClient.post(exchangeUrl, JSON.stringify(payload), headers);
-            const body = yield response.readBody();
-            const responseJson = JSON.parse(body);
-            if (responseJson.errors) {
-                throw new Error(`OIDC token exchange failed: ${JSON.stringify(responseJson.errors)}`);
-            }
-            if (!responseJson.access_token) {
-                throw new Error('Access token not found in the response');
-            }
-            // Export env vars for usage tracking
-            this.trackOldOidcUsage();
-            // Export step outputs
-            this.outputOidcTokenAndUsernameFromToken(responseJson.access_token);
-            return responseJson.access_token;
-        });
+    static async manualExchangeOidc(creds) {
+        const url = creds.jfrogUrl;
+        const providerName = creds.oidcProviderName;
+        const applicationKey = await this.getApplicationKey();
+        if (!url || !providerName) {
+            throw new Error('Missing required JFrog URL or OIDC provider name.');
+        }
+        if (!creds.oidcTokenId) {
+            throw new Error('Missing required OIDC token ID.');
+        }
+        const exchangeUrl = url.replace(/\/$/, '') + '/access/api/v1/oidc/token';
+        const payload = this.buildOidcTokenExchangePayload(creds.oidcTokenId, providerName, applicationKey);
+        const httpClient = new http_client_1.HttpClient();
+        const headers = { 'Content-Type': 'application/json' };
+        const response = await httpClient.post(exchangeUrl, JSON.stringify(payload), headers);
+        const body = await response.readBody();
+        const responseJson = JSON.parse(body);
+        if (responseJson.errors) {
+            throw new Error(`OIDC token exchange failed: ${JSON.stringify(responseJson.errors)}`);
+        }
+        if (!responseJson.access_token) {
+            throw new Error('Access token not found in the response');
+        }
+        // Export env vars for usage tracking
+        this.trackOldOidcUsage();
+        // Export step outputs
+        this.outputOidcTokenAndUsernameFromToken(responseJson.access_token);
+        return responseJson.access_token;
     }
     /**
      * Extracts the access token and username from the CLI output.
@@ -1051,19 +978,18 @@ class OidcUtils {
      * @private
      */
     static buildOidcTokenExchangePayload(jwt, providerName, applicationKey) {
-        var _a, _b, _c, _d, _e, _f;
         return {
             grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
             subject_token_type: 'urn:ietf:params:oauth:token-type:id_token',
             subject_token: jwt,
             provider_name: providerName,
-            project_key: (_a = process.env.JF_PROJECT) !== null && _a !== void 0 ? _a : '',
+            project_key: process.env.JF_PROJECT ?? '',
             // gh_* params are used for usage tracking
-            gh_job_id: (_b = process.env.GITHUB_JOB) !== null && _b !== void 0 ? _b : '',
-            gh_run_id: (_c = process.env.GITHUB_RUN_ID) !== null && _c !== void 0 ? _c : '',
-            gh_repo: (_d = process.env.GITHUB_REPOSITORY) !== null && _d !== void 0 ? _d : '',
-            gh_revision: (_e = process.env.GITHUB_SHA) !== null && _e !== void 0 ? _e : '',
-            gh_branch: (_f = process.env.GITHUB_REF_NAME) !== null && _f !== void 0 ? _f : '',
+            gh_job_id: process.env.GITHUB_JOB ?? '',
+            gh_run_id: process.env.GITHUB_RUN_ID ?? '',
+            gh_repo: process.env.GITHUB_REPOSITORY ?? '',
+            gh_revision: process.env.GITHUB_SHA ?? '',
+            gh_branch: process.env.GITHUB_REF_NAME ?? '',
             // AppTrust context parameters
             repo: process.env.GITHUB_REPOSITORY,
             revision: process.env.GITHUB_SHA,
@@ -1080,34 +1006,32 @@ class OidcUtils {
      *
      * @returns A promise that resolves to the application key as a string.
      */
-    static getApplicationKey() {
-        return __awaiter(this, void 0, void 0, function* () {
-            const configFilePath = path_1.default.join(this.JF_CONFIG_DIR_NAME, this.JF_CONFIG_FILE_NAME);
-            try {
-                const config = yield this.readConfigFromFileSystem(configFilePath);
-                if (!config) {
-                    console.debug('Config file is empty or not found.');
-                    return '';
-                }
-                const configObj = (0, js_yaml_1.load)(config);
-                const application = configObj[this.APPLICATION_ROOT_YML];
-                if (!application) {
-                    console.log('Application root is not found in the config file.');
-                    return '';
-                }
-                const applicationKey = application[this.KEY];
-                if (!applicationKey) {
-                    console.log('Application key is not found in the config file.');
-                    return '';
-                }
-                console.debug('Found application key: [REDACTED]');
-                return applicationKey;
-            }
-            catch (error) {
-                console.error('Error reading config:', error);
+    static async getApplicationKey() {
+        const configFilePath = path_1.default.join(this.JF_CONFIG_DIR_NAME, this.JF_CONFIG_FILE_NAME);
+        try {
+            const config = await this.readConfigFromFileSystem(configFilePath);
+            if (!config) {
+                console.debug('Config file is empty or not found.');
                 return '';
             }
-        });
+            const configObj = (0, js_yaml_1.load)(config);
+            const application = configObj[this.APPLICATION_ROOT_YML];
+            if (!application) {
+                console.log('Application root is not found in the config file.');
+                return '';
+            }
+            const applicationKey = application[this.KEY];
+            if (!applicationKey) {
+                console.log('Application key is not found in the config file.');
+                return '';
+            }
+            console.debug('Found application key: [REDACTED]');
+            return applicationKey;
+        }
+        catch (error) {
+            console.error('Error reading config:', error);
+            return '';
+        }
     }
     /**
      * Reads .jfrog configuration file from file system.
@@ -1119,16 +1043,14 @@ class OidcUtils {
      * @param configRelativePath - The relative path to the configuration file.
      * @returns A promise that resolves to the content of the configuration file as a string.
      */
-    static readConfigFromFileSystem(configRelativePath) {
-        return __awaiter(this, void 0, void 0, function* () {
-            core.debug(`Reading config from file system. Looking for ${configRelativePath}`);
-            if (!(0, fs_1.existsSync)(configRelativePath)) {
-                core.debug(`config.yml not found in ${configRelativePath}`);
-                return '';
-            }
-            core.debug(`config.yml found in ${configRelativePath}`);
-            return yield fs_1.promises.readFile(configRelativePath, 'utf-8');
-        });
+    static async readConfigFromFileSystem(configRelativePath) {
+        core.debug(`Reading config from file system. Looking for ${configRelativePath}`);
+        if (!(0, fs_1.existsSync)(configRelativePath)) {
+            core.debug(`config.yml not found in ${configRelativePath}`);
+            return '';
+        }
+        core.debug(`config.yml found in ${configRelativePath}`);
+        return await fs_1.promises.readFile(configRelativePath, 'utf-8');
     }
     static isCLIVersionOidcSupported() {
         const version = core.getInput(utils_1.Utils.CLI_VERSION_ARG) || '';
@@ -1140,17 +1062,6 @@ class OidcUtils {
     }
 }
 exports.OidcUtils = OidcUtils;
-OidcUtils.MIN_CLI_OIDC_VERSION = '2.75.0';
-// Application yaml root key
-OidcUtils.APPLICATION_ROOT_YML = 'application';
-// Application Config file key, yaml should look like:
-// application:
-//   key: <application key>
-OidcUtils.KEY = 'key';
-// Config file directory name
-OidcUtils.JF_CONFIG_DIR_NAME = '.jfrog';
-// Config file name
-OidcUtils.JF_CONFIG_FILE_NAME = 'config.yml';
 
 
 /***/ }),
@@ -1183,15 +1094,6 @@ var __importStar = (this && this.__importStar) || function (mod) {
     __setModuleDefault(result, mod);
     return result;
 };
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Utils = void 0;
 const core = __importStar(__nccwpck_require__(7484));
@@ -1204,6 +1106,47 @@ const semver_1 = __nccwpck_require__(2088);
 const oidc_utils_1 = __nccwpck_require__(5315);
 const job_summary_1 = __nccwpck_require__(1298);
 class Utils {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    static USER_AGENT = 'setup-jfrog-cli-github-action/' + (__nccwpck_require__(8330)/* .version */ .rE);
+    // Default artifactory URL and repository for downloading JFrog CLI
+    static DEFAULT_DOWNLOAD_DETAILS = {
+        artifactoryUrl: 'https://releases.jfrog.io/artifactory',
+        repository: 'jfrog-cli',
+    };
+    // The JF_ENV_* prefix for Config Tokens
+    static CONFIG_TOKEN_PREFIX = /^JF_ENV_.*$/;
+    // Minimum JFrog CLI version supported
+    static MIN_CLI_VERSION = '1.46.4';
+    // The value in "version" argument to set to get the latest JFrog CLI version
+    static LATEST_CLI_VERSION = 'latest';
+    // The value in the download URL to set to get the latest version
+    static LATEST_RELEASE_VERSION = '[RELEASE]';
+    // Placeholder CLI version to use to keep 'latest' in cache.
+    static LATEST_SEMVER = '100.100.100';
+    // The default server id name for separate env config
+    static SETUP_JFROG_CLI_SERVER_ID = 'setup-jfrog-cli-server';
+    // Environment variable to hold all configured server IDs, separated by ';'
+    static JFROG_CLI_SERVER_IDS_ENV_VAR = 'SETUP_JFROG_CLI_SERVER_IDS';
+    // Inputs
+    // Version input
+    static CLI_VERSION_ARG = 'version';
+    // Download repository input
+    static CLI_REMOTE_ARG = 'download-repository';
+    // OpenID Connect audience input
+    static OIDC_AUDIENCE_ARG = 'oidc-audience';
+    // OpenID Connect provider_name input
+    static OIDC_INTEGRATION_PROVIDER_NAME = 'oidc-provider-name';
+    // Disable Job Summaries feature flag
+    static JOB_SUMMARY_DISABLE = 'disable-job-summary';
+    // Disable auto build info publish feature flag
+    static AUTO_BUILD_PUBLISH_DISABLE = 'disable-auto-build-publish';
+    // Disable auto evidence collection feature flag
+    static AUTO_EVIDENCE_COLLECTION_DISABLE = 'disable-auto-evidence-collection';
+    // Custom server ID input
+    static CUSTOM_SERVER_ID = 'custom-server-id';
+    // GHES baseUrl support
+    static GHE_BASE_URL_INPUT = 'ghe-base-url';
+    static GHE_BASE_URL_ALIAS_INPUT = 'ghe_base_url';
     /**
      * Gathers JFrog's credentials from environment variables and delivers them in a JfrogCredentials structure
      * @returns JfrogCredentials struct with all credentials found in environment variables
@@ -1238,32 +1181,30 @@ class Utils {
         const v = core.getInput(Utils.GHE_BASE_URL_INPUT, { required: false }) || core.getInput(Utils.GHE_BASE_URL_ALIAS_INPUT, { required: false }) || '';
         return v.trim();
     }
-    static getAndAddCliToPath(jfrogCredentials) {
-        return __awaiter(this, void 0, void 0, function* () {
-            let version = core.getInput(Utils.CLI_VERSION_ARG);
-            let cliRemote = core.getInput(Utils.CLI_REMOTE_ARG);
-            const isLatestVer = version === Utils.LATEST_CLI_VERSION;
-            if (!isLatestVer && (0, semver_1.lt)(version, this.MIN_CLI_VERSION)) {
-                throw new Error('Requested to download JFrog CLI version ' + version + ' but must be at least ' + this.MIN_CLI_VERSION);
-            }
-            if (!isLatestVer && this.loadFromCache(version)) {
-                core.info('Found JFrog CLI in cache. No need to download');
-                return;
-            }
-            // To download CLI from a remote repository, we first need to fetch an access token.
-            // This should fall back to the 'manual' oidc exchange method.
-            if (jfrogCredentials.oidcProviderName && cliRemote != '') {
-                core.debug("'Fetching OIDC access token to download CLI from remote repository");
-                jfrogCredentials.accessToken = yield oidc_utils_1.OidcUtils.exchangeOidcToken(jfrogCredentials);
-            }
-            // Download JFrog CLI
-            let downloadDetails = Utils.extractDownloadDetails(cliRemote, jfrogCredentials);
-            let url = Utils.getCliUrl(version, Utils.getJFrogExecutableName(), downloadDetails);
-            core.info('Downloading JFrog CLI from ' + url);
-            let downloadedExecutable = yield toolCache.downloadTool(url, undefined, downloadDetails.auth);
-            // Cache 'jf' and 'jfrog' executables
-            yield this.cacheAndAddPath(downloadedExecutable, version);
-        });
+    static async getAndAddCliToPath(jfrogCredentials) {
+        let version = core.getInput(Utils.CLI_VERSION_ARG);
+        let cliRemote = core.getInput(Utils.CLI_REMOTE_ARG);
+        const isLatestVer = version === Utils.LATEST_CLI_VERSION;
+        if (!isLatestVer && (0, semver_1.lt)(version, this.MIN_CLI_VERSION)) {
+            throw new Error('Requested to download JFrog CLI version ' + version + ' but must be at least ' + this.MIN_CLI_VERSION);
+        }
+        if (!isLatestVer && this.loadFromCache(version)) {
+            core.info('Found JFrog CLI in cache. No need to download');
+            return;
+        }
+        // To download CLI from a remote repository, we first need to fetch an access token.
+        // This should fall back to the 'manual' oidc exchange method.
+        if (jfrogCredentials.oidcProviderName && cliRemote != '') {
+            core.debug("'Fetching OIDC access token to download CLI from remote repository");
+            jfrogCredentials.accessToken = await oidc_utils_1.OidcUtils.exchangeOidcToken(jfrogCredentials);
+        }
+        // Download JFrog CLI
+        let downloadDetails = Utils.extractDownloadDetails(cliRemote, jfrogCredentials);
+        let url = Utils.getCliUrl(version, Utils.getJFrogExecutableName(), downloadDetails);
+        core.info('Downloading JFrog CLI from ' + url);
+        let downloadedExecutable = await toolCache.downloadTool(url, undefined, downloadDetails.auth);
+        // Cache 'jf' and 'jfrog' executables
+        await this.cacheAndAddPath(downloadedExecutable, version);
     }
     /**
      * Try to load the JFrog CLI executables from cache.
@@ -1292,23 +1233,21 @@ class Utils {
      * @param downloadedExecutable - Path to the downloaded JFrog CLI executable
      * @param version              - JFrog CLI version
      */
-    static cacheAndAddPath(downloadedExecutable, version) {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (version === Utils.LATEST_CLI_VERSION) {
-                // If the version is 'latest', we keep it on cache as 100.100.100 as GitHub actions cache supports only semver versions
-                version = Utils.LATEST_SEMVER;
-            }
-            const jfFileName = Utils.getJfExecutableName();
-            const jfrogFileName = Utils.getJFrogExecutableName();
-            let jfCacheDir = yield toolCache.cacheFile(downloadedExecutable, jfFileName, jfFileName, version);
-            core.addPath(jfCacheDir);
-            let jfrogCacheDir = yield toolCache.cacheFile(downloadedExecutable, jfrogFileName, jfrogFileName, version);
-            core.addPath(jfrogCacheDir);
-            if (!Utils.isWindows()) {
-                (0, fs_1.chmodSync)((0, path_1.join)(jfCacheDir, jfFileName), 0o555);
-                (0, fs_1.chmodSync)((0, path_1.join)(jfrogCacheDir, jfrogFileName), 0o555);
-            }
-        });
+    static async cacheAndAddPath(downloadedExecutable, version) {
+        if (version === Utils.LATEST_CLI_VERSION) {
+            // If the version is 'latest', we keep it on cache as 100.100.100 as GitHub actions cache supports only semver versions
+            version = Utils.LATEST_SEMVER;
+        }
+        const jfFileName = Utils.getJfExecutableName();
+        const jfrogFileName = Utils.getJFrogExecutableName();
+        let jfCacheDir = await toolCache.cacheFile(downloadedExecutable, jfFileName, jfFileName, version);
+        core.addPath(jfCacheDir);
+        let jfrogCacheDir = await toolCache.cacheFile(downloadedExecutable, jfrogFileName, jfrogFileName, version);
+        core.addPath(jfrogCacheDir);
+        if (!Utils.isWindows()) {
+            (0, fs_1.chmodSync)((0, path_1.join)(jfCacheDir, jfFileName), 0o555);
+            (0, fs_1.chmodSync)((0, path_1.join)(jfrogCacheDir, jfrogFileName), 0o555);
+        }
     }
     /**
      * Get the JFrog CLI download URL.
@@ -1335,45 +1274,43 @@ class Utils {
         return new Set(Object.keys(process.env)
             .filter((envKey) => envKey.match(Utils.CONFIG_TOKEN_PREFIX))
             .filter((envKey) => process.env[envKey])
-            .map((envKey) => { var _a; return ((_a = process.env[envKey]) === null || _a === void 0 ? void 0 : _a.trim()) || ''; }));
+            .map((envKey) => process.env[envKey]?.trim() || ''));
     }
     /**
      * Get separate env config for the URL and connection details and return args to add to the config add command
      * @param jfrogCredentials existing JFrog credentials - url, access token, username + password
      */
-    static getJfrogCliConfigArgs(jfrogCredentials) {
-        return __awaiter(this, void 0, void 0, function* () {
-            /**
-             * @name url - JFrog Platform URL
-             * @name user - JFrog Platform basic authentication
-             * @name password - JFrog Platform basic authentication
-             * @name accessToken - Jfrog Platform access token
-             * @name oidcProviderName - OpenID Connect provider name defined in the JFrog Platform
-             */
-            let url = jfrogCredentials.jfrogUrl;
-            let user = jfrogCredentials.username;
-            let password = jfrogCredentials.password;
-            let accessToken = jfrogCredentials.accessToken;
-            let oidcProviderName = jfrogCredentials.oidcProviderName;
-            // Url is mandatory for JFrog CLI configuration
-            if (!url) {
-                return;
-            }
-            // Check for OIDC authentication
-            if (!!oidcProviderName) {
-                accessToken = yield oidc_utils_1.OidcUtils.exchangeOidcToken(jfrogCredentials);
-            }
-            const configCmd = [Utils.getServerIdForConfig(), '--url', url, '--interactive=false', '--overwrite=true'];
-            if (!!accessToken) {
-                // Access Token / OIDC Token
-                configCmd.push('--access-token', accessToken);
-            }
-            else if (!!user && !!password) {
-                // Basic Auth
-                configCmd.push('--user', user, '--password', password);
-            }
-            return configCmd;
-        });
+    static async getJfrogCliConfigArgs(jfrogCredentials) {
+        /**
+         * @name url - JFrog Platform URL
+         * @name user - JFrog Platform basic authentication
+         * @name password - JFrog Platform basic authentication
+         * @name accessToken - Jfrog Platform access token
+         * @name oidcProviderName - OpenID Connect provider name defined in the JFrog Platform
+         */
+        let url = jfrogCredentials.jfrogUrl;
+        let user = jfrogCredentials.username;
+        let password = jfrogCredentials.password;
+        let accessToken = jfrogCredentials.accessToken;
+        let oidcProviderName = jfrogCredentials.oidcProviderName;
+        // Url is mandatory for JFrog CLI configuration
+        if (!url) {
+            return;
+        }
+        // Check for OIDC authentication
+        if (!!oidcProviderName) {
+            accessToken = await oidc_utils_1.OidcUtils.exchangeOidcToken(jfrogCredentials);
+        }
+        const configCmd = [Utils.getServerIdForConfig(), '--url', url, '--interactive=false', '--overwrite=true'];
+        if (!!accessToken) {
+            // Access Token / OIDC Token
+            configCmd.push('--access-token', accessToken);
+        }
+        else if (!!user && !!password) {
+            // Basic Auth
+            configCmd.push('--user', user, '--password', password);
+        }
+        return configCmd;
     }
     /**
      * Get server ID for JFrog CLI configuration. Save the server ID in the servers env var if it doesn't already exist.
@@ -1410,7 +1347,6 @@ class Utils {
         return Utils.SETUP_JFROG_CLI_SERVER_ID;
     }
     static setCliEnv() {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
         if (core.isDebug()) {
             Utils.exportVariableIfNotSet('JFROG_CLI_LOG_LEVEL', 'DEBUG');
         }
@@ -1418,13 +1354,13 @@ class Utils {
         Utils.exportVariableIfNotSet('JFROG_CLI_OFFER_CONFIG', 'false');
         Utils.exportVariableIfNotSet('JFROG_CLI_AVOID_NEW_VERSION_WARNING', 'true');
         Utils.exportVariableIfNotSet('CI', 'true');
-        Utils.exportVariableIfNotSet('JFROG_CLI_SOURCECODE_REPOSITORY', (_a = process.env.GITHUB_REPOSITORY) !== null && _a !== void 0 ? _a : '');
-        Utils.exportVariableIfNotSet('JFROG_CLI_CI_JOB_ID', (_b = process.env.GITHUB_WORKFLOW) !== null && _b !== void 0 ? _b : '');
-        Utils.exportVariableIfNotSet('JFROG_CLI_CI_RUN_ID', (_c = process.env.GITHUB_RUN_ID) !== null && _c !== void 0 ? _c : '');
-        Utils.exportVariableIfNotSet('JFROG_CLI_GITHUB_TOKEN', (_d = process.env.GITHUB_TOKEN) !== null && _d !== void 0 ? _d : '');
+        Utils.exportVariableIfNotSet('JFROG_CLI_SOURCECODE_REPOSITORY', process.env.GITHUB_REPOSITORY ?? '');
+        Utils.exportVariableIfNotSet('JFROG_CLI_CI_JOB_ID', process.env.GITHUB_WORKFLOW ?? '');
+        Utils.exportVariableIfNotSet('JFROG_CLI_CI_RUN_ID', process.env.GITHUB_RUN_ID ?? '');
+        Utils.exportVariableIfNotSet('JFROG_CLI_GITHUB_TOKEN', process.env.GITHUB_TOKEN ?? '');
         // Used for OIDC token exchange extra params
-        Utils.exportVariableIfNotSet('JFROG_CLI_CI_VCS_REVISION', (_f = (_e = process.env.GITHUB_SHA) !== null && _e !== void 0 ? _e : '') !== null && _f !== void 0 ? _f : '');
-        Utils.exportVariableIfNotSet('JFROG_CLI_CI_BRANCH', (_h = (_g = process.env.GITHUB_REF_NAME) !== null && _g !== void 0 ? _g : '') !== null && _h !== void 0 ? _h : '');
+        Utils.exportVariableIfNotSet('JFROG_CLI_CI_VCS_REVISION', process.env.GITHUB_SHA ?? '' ?? '');
+        Utils.exportVariableIfNotSet('JFROG_CLI_CI_BRANCH', process.env.GITHUB_REF_NAME ?? '' ?? '');
         Utils.exportVariableIfNotSet('JFROG_CLI_CI_VCS_URL', Utils.buildVcsUrl());
         let buildNameEnv = process.env.GITHUB_WORKFLOW;
         if (buildNameEnv) {
@@ -1446,7 +1382,7 @@ class Utils {
             job_summary_1.JobSummary.enableJobSummaries();
         }
         // Indicate if JF_GIT_TOKEN is provided as an environment variable, used by Xray usage.
-        Utils.exportVariableIfNotSet('JFROG_CLI_USAGE_GH_TOKEN_FOR_CODE_SCANNING_ALERTS_PROVIDED', (_j = process.env.JF_GIT_TOKEN) !== null && _j !== void 0 ? _j : '');
+        Utils.exportVariableIfNotSet('JFROG_CLI_USAGE_GH_TOKEN_FOR_CODE_SCANNING_ALERTS_PROVIDED', process.env.JF_GIT_TOKEN ?? '');
     }
     static buildVcsUrl() {
         const serverUrl = process.env.GITHUB_SERVER_URL;
@@ -1458,42 +1394,38 @@ class Utils {
             core.exportVariable(key, value);
         }
     }
-    static configJFrogServers(jfrogCredentials) {
-        return __awaiter(this, void 0, void 0, function* () {
-            let cliConfigCmd = ['config'];
-            for (let configToken of Utils.getConfigTokens()) {
-                // Mark the credentials as secrets to prevent them from being printed in the logs or exported to other workflows
-                core.setSecret(configToken);
-                yield Utils.runCli(cliConfigCmd.concat('import', configToken));
-            }
-            let configArgs = yield Utils.getJfrogCliConfigArgs(jfrogCredentials);
-            if (configArgs) {
-                yield Utils.runCli(cliConfigCmd.concat('add', ...configArgs));
-            }
-        });
+    static async configJFrogServers(jfrogCredentials) {
+        let cliConfigCmd = ['config'];
+        for (let configToken of Utils.getConfigTokens()) {
+            // Mark the credentials as secrets to prevent them from being printed in the logs or exported to other workflows
+            core.setSecret(configToken);
+            await Utils.runCli(cliConfigCmd.concat('import', configToken));
+        }
+        let configArgs = await Utils.getJfrogCliConfigArgs(jfrogCredentials);
+        if (configArgs) {
+            await Utils.runCli(cliConfigCmd.concat('add', ...configArgs));
+        }
     }
     /**
      * Removes configured JFrog CLI servers saved in the environment variable.
      * If a custom server ID is defined, only remove the custom server ID.
      */
-    static removeJFrogServers() {
-        return __awaiter(this, void 0, void 0, function* () {
-            const customServerId = this.getInputtedCustomId();
-            core.info(`The value of custom is: '${customServerId}'`);
-            if (customServerId) {
-                // Remove only the custom server ID
-                core.debug(`Removing custom server ID: '${customServerId}'...`);
-                yield Utils.runCli(['c', 'rm', customServerId, '--quiet']);
+    static async removeJFrogServers() {
+        const customServerId = this.getInputtedCustomId();
+        core.info(`The value of custom is: '${customServerId}'`);
+        if (customServerId) {
+            // Remove only the custom server ID
+            core.debug(`Removing custom server ID: '${customServerId}'...`);
+            await Utils.runCli(['c', 'rm', customServerId, '--quiet']);
+        }
+        else {
+            // Remove all configured server IDs
+            for (const serverId of Utils.getConfiguredJFrogServers()) {
+                core.debug(`Removing server ID: '${serverId}'...`);
+                await Utils.runCli(['c', 'rm', serverId, '--quiet']);
             }
-            else {
-                // Remove all configured server IDs
-                for (const serverId of Utils.getConfiguredJFrogServers()) {
-                    core.debug(`Removing server ID: '${serverId}'...`);
-                    yield Utils.runCli(['c', 'rm', serverId, '--quiet']);
-                }
-                core.exportVariable(Utils.JFROG_CLI_SERVER_IDS_ENV_VAR, '');
-            }
-        });
+            core.exportVariable(Utils.JFROG_CLI_SERVER_IDS_ENV_VAR, '');
+        }
     }
     /**
      * Split and return the configured JFrog CLI servers that are saved in the servers env var.
@@ -1533,13 +1465,11 @@ class Utils {
      * @param args - CLI arguments
      * @param options - Execution options
      */
-    static runCli(args, options) {
-        return __awaiter(this, void 0, void 0, function* () {
-            let res = yield (0, exec_1.exec)('jf', args, Object.assign(Object.assign({}, options), { ignoreReturnCode: true }));
-            if (res !== core.ExitCode.Success) {
-                throw new Error('JFrog CLI exited with exit code: ' + res);
-            }
-        });
+    static async runCli(args, options) {
+        let res = await (0, exec_1.exec)('jf', args, { ...options, ignoreReturnCode: true });
+        if (res !== core.ExitCode.Success) {
+            throw new Error('JFrog CLI exited with exit code: ' + res);
+        }
     }
     /**
      * Execute JFrog CLI command and capture its output.
@@ -1553,20 +1483,18 @@ class Utils {
      * @returns The standard output of the CLI command as a string.
      * @throws An error if the JFrog CLI command exits with a non-success code.
      */
-    static runCliAndGetOutput(args, options) {
-        return __awaiter(this, void 0, void 0, function* () {
-            core.debug(`jf ${args.join(' ')}`);
-            let output;
-            output = yield (0, exec_1.getExecOutput)('jf', args, Object.assign(Object.assign({}, options), { ignoreReturnCode: true }));
-            if (output.exitCode !== core.ExitCode.Success) {
-                if (options === null || options === void 0 ? void 0 : options.silent) {
-                    core.info(output.stdout);
-                    core.info(output.stderr);
-                }
-                throw new Error(`JFrog CLI exited with exit code ${output.exitCode}`);
+    static async runCliAndGetOutput(args, options) {
+        core.debug(`jf ${args.join(' ')}`);
+        let output;
+        output = await (0, exec_1.getExecOutput)('jf', args, { ...options, ignoreReturnCode: true });
+        if (output.exitCode !== core.ExitCode.Success) {
+            if (options?.silent) {
+                core.info(output.stdout);
+                core.info(output.stderr);
             }
-            return output.stdout;
-        });
+            throw new Error(`JFrog CLI exited with exit code ${output.exitCode}`);
+        }
+        return output.stdout;
     }
     /**
      * If repository input was set, extract CLI download details,
@@ -1617,47 +1545,6 @@ class Utils {
     }
 }
 exports.Utils = Utils;
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-Utils.USER_AGENT = 'setup-jfrog-cli-github-action/' + (__nccwpck_require__(8330)/* .version */ .rE);
-// Default artifactory URL and repository for downloading JFrog CLI
-Utils.DEFAULT_DOWNLOAD_DETAILS = {
-    artifactoryUrl: 'https://releases.jfrog.io/artifactory',
-    repository: 'jfrog-cli',
-};
-// The JF_ENV_* prefix for Config Tokens
-Utils.CONFIG_TOKEN_PREFIX = /^JF_ENV_.*$/;
-// Minimum JFrog CLI version supported
-Utils.MIN_CLI_VERSION = '1.46.4';
-// The value in "version" argument to set to get the latest JFrog CLI version
-Utils.LATEST_CLI_VERSION = 'latest';
-// The value in the download URL to set to get the latest version
-Utils.LATEST_RELEASE_VERSION = '[RELEASE]';
-// Placeholder CLI version to use to keep 'latest' in cache.
-Utils.LATEST_SEMVER = '100.100.100';
-// The default server id name for separate env config
-Utils.SETUP_JFROG_CLI_SERVER_ID = 'setup-jfrog-cli-server';
-// Environment variable to hold all configured server IDs, separated by ';'
-Utils.JFROG_CLI_SERVER_IDS_ENV_VAR = 'SETUP_JFROG_CLI_SERVER_IDS';
-// Inputs
-// Version input
-Utils.CLI_VERSION_ARG = 'version';
-// Download repository input
-Utils.CLI_REMOTE_ARG = 'download-repository';
-// OpenID Connect audience input
-Utils.OIDC_AUDIENCE_ARG = 'oidc-audience';
-// OpenID Connect provider_name input
-Utils.OIDC_INTEGRATION_PROVIDER_NAME = 'oidc-provider-name';
-// Disable Job Summaries feature flag
-Utils.JOB_SUMMARY_DISABLE = 'disable-job-summary';
-// Disable auto build info publish feature flag
-Utils.AUTO_BUILD_PUBLISH_DISABLE = 'disable-auto-build-publish';
-// Disable auto evidence collection feature flag
-Utils.AUTO_EVIDENCE_COLLECTION_DISABLE = 'disable-auto-evidence-collection';
-// Custom server ID input
-Utils.CUSTOM_SERVER_ID = 'custom-server-id';
-// GHES baseUrl support
-Utils.GHE_BASE_URL_INPUT = 'ghe-base-url';
-Utils.GHE_BASE_URL_ALIAS_INPUT = 'ghe_base_url';
 
 
 /***/ }),
