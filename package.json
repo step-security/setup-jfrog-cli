@@ -1,12 +1,12 @@
 {
     "name": "@step-security/setup-jfrog-cli",
-    "version": "4.9.1",
+    "version": "5.0.0",
     "private": true,
     "description": "Setup JFrog CLI in GitHub Actions",
     "main": "dist/index.js",
     "engines": {
         "npm": ">=10.0.0",
-        "node": ">=20.0.0"
+        "node": ">=24.0.0"
     },
     "scripts": {
         "build": "npm run compile && npm run package",
