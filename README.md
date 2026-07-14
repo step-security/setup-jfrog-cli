@@ -18,8 +18,10 @@
     -   [Setting Build Name and Number for Build Info Publication](#setting-build-name-and-number-for-build-info-publication)
     -   [Setting JFrog CLI Version](#setting-jfrog-cli-version)
     -   [Setting the JFrog Project Key](#setting-the-jfrog-project-key)
+    -   [Monorepo Support](#monorepo-support)
     -   [Downloading JFrog CLI from Artifactory](#downloading-jfrog-cli-from-artifactory)
     -   [Custom Server ID and Multi-Configuration](#custom-server-id-and-multi-configuration)
+    -   [Enabling Package Alias](#enabling-package-alias)
 -   [JFrog Job Summary](#jfrog-job-summary)
 -   [Code Scanning Alerts](#code-scanning-alerts)
 -   [Automatic Evidence Collection](#automatic-evidence-collection)
@@ -43,7 +45,7 @@ Additionally, the Action incorporates the following features when utilizing JFro
 ## Usage
 
 ```yml
-- uses: step-security/setup-jfrog-cli@v4
+- uses: step-security/setup-jfrog-cli@v5
 # + Authentication method
 - run: jf --version
 ```
@@ -115,7 +117,7 @@ To utilize the OIDC protocol, follow these steps:
 Example step utilizing OpenID Connect:
 
 ```yml
-- uses: step-security/setup-jfrog-cli@v4
+- uses: step-security/setup-jfrog-cli@v5
   env:
       JF_URL: ${{ vars.JF_URL }}
   with:
@@ -169,7 +171,7 @@ You can set the connection details to your JFrog Platform by using one of the fo
 You can use these environment variables in your workflow as follows:
 
 ```yml
-- uses: step-security/setup-jfrog-cli@v4
+- uses: step-security/setup-jfrog-cli@v5
   env:
     # JFrog Platform url
     JF_URL: ${{ vars.JF_URL }} # or 'https://acme.jfrog.io'
@@ -201,7 +203,7 @@ The secret should be exposed as an environment variable with the _JF*ENV*_ prefi
 Here's how you do this:
 
 ```yml
-- uses: step-security/setup-jfrog-cli@v4
+- uses: step-security/setup-jfrog-cli@v5
   env:
       JF_ENV_1: ${{ secrets.JF_SECRET_ENV_1 }}
 - run: |
@@ -215,7 +217,7 @@ as the _JF_ENV_1_ environment variable. That's it - the ping command will now pi
 If you have multiple Config Tokens as secrets, you can use all of them in the workflow as follows:
 
 ```yml
-- uses: step-security/setup-jfrog-cli@v4
+- uses: step-security/setup-jfrog-cli@v5
   env:
       JF_ENV_1: ${{ secrets.JF_SECRET_ENV_1 }}
       JF_ENV_2: ${{ secrets.JF_SECRET_ENV_2 }}
@@ -274,7 +276,7 @@ env:
 By default, the JFrog CLI version set in [action.yml](https://github.com/step-security/setup-jfrog-cli/blob/master/action.yml) is used. To set a specific version, add the _version_ input as follows:
 
 ```yml
-- uses: step-security/setup-jfrog-cli@v4
+- uses: step-security/setup-jfrog-cli@v5
   with:
       version: X.Y.Z
 ```
@@ -282,7 +284,7 @@ By default, the JFrog CLI version set in [action.yml](https://github.com/step-se
 It is also possible to set the latest JFrog CLI version by adding the _version_ input as follows:
 
 ```yml
-- uses: step-security/setup-jfrog-cli@v4
+- uses: step-security/setup-jfrog-cli@v5
   with:
       version: latest
 ```
@@ -304,11 +306,109 @@ By default, the JFrog CLI accepts a project flag in some of its commands.
 You can set the project key in the environment variable ```JF_PROJECT``` to avoid passing it in each command.
 
 ```yml
-- uses: step-security/setup-jfrog-cli@v4
+- uses: step-security/setup-jfrog-cli@v5
   env:
       JF_PROJECT: "project-key"
 ```
 </details>
+
+<details>
+    <summary>Monorepo Support</summary>
+    
+### Monorepo Support
+
+If your repository is a monorepo containing multiple services, you can associate each service with a different application key in the JFrog Platform by setting the `JFROG_CLI_APPLICATION_KEY` environment variable at the job level.
+
+#### Prerequisites
+
+- OIDC authentication must be [configured](#connecting-to-jfrog-using-oidc-openid-connect).
+- The `JFROG_CLI_APPLICATION_KEY` environment variable resolution requires the CLI's **native OIDC**
+authentication flow. To use native OIDC, the following conditions must be met:
+- JFrog CLI version **2.75.0 or above**.
+- The CLI is **not** being downloaded from Artifactory (i.e., the `download-repository` input is not set).
+
+> [!IMPORTANT]
+> If the CLI version is below 2.75.0, or if you are downloading the CLI from Artifactory using `download-repository`, the action falls back to a manual OIDC token exchange via the JFrog Platform REST API. This fallback does **not** support `JFROG_CLI_APPLICATION_KEY` resolution.
+
+#### Application Key Resolution
+
+The application key is resolved in the following order of precedence:
+1. **Job-level environment variable** — If `JFROG_CLI_APPLICATION_KEY` is set as an environment variable in the job, it takes precedence.
+2. **config.yml** — If the environment variable is not set in the job, the action reads the application key from the `/path/to/git-repo/.jfrog/config.yml` file. Note that `config.yml` supports only a single application key.
+3. **No association** — If the variable is not defined in either location, no application is associated with the service.
+
+#### Configuring Multiple Application Keys
+
+While `config.yml` supports only a single application key, you can map different services to different application keys by defining separate jobs in your workflow. Each job sets its own
+`JFROG_CLI_APPLICATION_KEY` environment variable, as shown in the code segment below:
+
+```name: "Setup JFrog CLI OIDC Example"
+on: 
+  push:
+  workflow_dispatch:
+
+permissions:
+  # This is required for requesting the OIDC token
+  id-token: write
+  # This is required for actions/checkout
+  contents: read
+jobs:
+  deploy-nginx:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup JFrog CLI
+        uses: step-security/setup-jfrog-cli@v5
+        env:
+          JF_URL: ${{ secrets.JFROG_URL }}
+          JFROG_CLI_APPLICATION_KEY: nginx-app
+        with:
+          # Name of the OIDC provider as specified on the OIDC integration page in the JFrog Platform
+          oidc-provider-name: nginx-oidc
+
+      # BUILD & PUSH STEP
+      - name: Build and push Docker image
+        run: |
+          # Build the Docker image using JFrog CLI
+          jf docker build -t <artifactory host>/monorepo-docker-local/my-nginx:1.0.${{ github.run_number }} nginx-service
+          # Push the Docker image to JFrog Artifactory
+          jf docker push <artifactory host>/monorepo-docker-local/my-nginx:1.0.${{ github.run_number }}
+          # Reindex metadata server for the repository
+          jf rt curl -X POST "/api/metadata_server/reindex?async=false" -H "Content-Type: application/json" -d '{"paths": ["monorepo-docker-local"]}'
+
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup JFrog CLI
+        uses: step-security/setup-jfrog-cli@v5
+        env:
+          JF_URL: ${{ secrets.JFROG_URL }}
+          JFROG_CLI_APPLICATION_KEY: frontend-app
+        with:
+          # Name of the OIDC provider as specified on the OIDC integration page in the JFrog Platform
+          oidc-provider-name: frontend-oidc
+
+      # BUILD & PUSH STEP
+      - name: Build and push Docker image
+        run: |
+          # Build the Docker image using JFrog CLI
+          jf docker build -t <artifactory host>/monorepo-docker-local/my-frontend:1.0.${{ github.run_number }} frontend-service
+          # Push the Docker image to JFrog Artifactory
+          jf docker push <artifactory host>/monorepo-docker-local/my-frontend:1.0.${{ github.run_number }}
+          # Reindex metadata server for the repository
+          jf rt curl -X POST "/api/metadata_server/reindex?async=false" -H "Content-Type: application/json" -d '{"paths": ["monorepo-docker-local"]}'
+```
+    
+In this example, each job builds and publishes a different service from the monorepo, and each is associated with a distinct application key in the JFrog Platform.
+> [!IMPORTANT]
+> If two services should share the same application key, set the same JFROG_CLI_APPLICATION_KEY value in both jobs.
+</details>
+
 
 <details>
     <summary>Downloading JFrog CLI from Artifactory</summary>
@@ -323,7 +423,7 @@ Here's how you do this:
 2. Set _download-repository_ input to jfrog-cli-remote:
 
     ```yml
-    - uses: step-security/setup-jfrog-cli@v4
+    - uses: step-security/setup-jfrog-cli@v5
       env:
           # JFrog platform url (for example: https://acme.jfrog.io)
           JF_URL: ${{ vars.JF_URL }}
@@ -344,7 +444,7 @@ The action configures JFrog CLI with a default server ID, which is unique for ea
 You may override the default server ID by providing a custom server ID:
 
  ```yml
- - uses: step-security/setup-jfrog-cli@v4
+ - uses: step-security/setup-jfrog-cli@v5
    with:
        custom-server-id: my-server
  ```
@@ -352,6 +452,25 @@ You may override the default server ID by providing a custom server ID:
 You may also use multiple configurations in the same workflow by providing a custom server ID for each configuration.
 
 Alternating between configurations can be done by providing the `--server-id` option to JFrog CLI commands or by setting a default server using  `jf c use <server-id>`.
+</details>
+
+<details>
+    <summary>Enabling Package Alias</summary>
+
+### Enabling Package Alias
+
+When enabled, the action runs `jf package-alias install` after setting up JFrog CLI and appends the alias bin directory to `GITHUB_PATH`. Subsequent steps will transparently intercept package manager commands such as `mvn`, `npm`, `go`, etc., so they use JFrog CLI without changing your workflow scripts.
+
+You can optionally provide `package-alias-tools` as a comma-separated list to pass specific package managers to `jf package-alias install --packages`.
+
+This feature requires JFrog CLI version **2.93.0** or above. If the requested version is older, or if `jf package-alias install` fails for another reason, the action logs a warning and does not fail the job; subsequent steps will not use package aliases.
+
+```yml
+- uses: step-security/setup-jfrog-cli@v5
+  with:
+    enable-package-alias: true
+    package-alias-tools: npm,mvn,go
+```
 </details>
 
 ## JFrog Job Summary
@@ -377,7 +496,7 @@ By default, [build-info](https://jfrog.com/help/r/jfrog-pipelines-documentation/
 This behavior is disabled if the `jf rt build-publish` command was manually run during the workflow, or if requested explicitly by setting the `disable-auto-build-publish` input to `true`:
 
 ```yml
-- uses: step-security/setup-jfrog-cli@v4
+- uses: step-security/setup-jfrog-cli@v5
   with:
     disable-auto-build-publish: true
 ```
@@ -385,7 +504,7 @@ This behavior is disabled if the `jf rt build-publish` command was manually run 
 To disable the JFrog Job Summary altogether, set the `disable-job-summary` input to `true`:
 
 ```yml
-- uses: step-security/setup-jfrog-cli@v4
+- uses: step-security/setup-jfrog-cli@v5
   with:
     disable-job-summary: true
 ```
@@ -446,7 +565,7 @@ permissions:
 ```
 
 ``` yaml
-- uses: step-security/setup-jfrog-cli@v4
+- uses: step-security/setup-jfrog-cli@v5
   env:
     # The GitHub token is automatically generated for the job
     JF_GIT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
