@@ -53819,7 +53819,7 @@ module.exports = /*#__PURE__*/JSON.parse('{"application/1d-interleaved-parityfec
 /***/ ((module) => {
 
 "use strict";
-module.exports = {"rE":"5.0.0"};
+module.exports = {"rE":"5.1.0"};
 
 /***/ })
 

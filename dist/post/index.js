@@ -44267,7 +44267,7 @@ module.exports = parseParams
 /***/ ((module) => {
 
 "use strict";
-module.exports = {"rE":"5.0.0"};
+module.exports = {"rE":"5.1.0"};
 
 /***/ })
 
