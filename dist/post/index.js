@@ -1147,6 +1147,12 @@ class Utils {
     // GHES baseUrl support
     static GHE_BASE_URL_INPUT = 'ghe-base-url';
     static GHE_BASE_URL_ALIAS_INPUT = 'ghe_base_url';
+    // Enable Package Alias so mvn, npm, go etc. are intercepted in subsequent steps
+    static ENABLE_PACKAGE_ALIAS = 'enable-package-alias';
+    // Comma-separated package managers to include in package alias install
+    static PACKAGE_ALIAS_TOOLS = 'package-alias-tools';
+    // Minimum JFrog CLI version that supports jf package-alias
+    static MIN_CLI_VERSION_PACKAGE_ALIAS = '2.93.0';
     /**
      * Gathers JFrog's credentials from environment variables and delivers them in a JfrogCredentials structure
      * @returns JfrogCredentials struct with all credentials found in environment variables
@@ -1542,6 +1548,67 @@ class Utils {
             return 'Basic ' + Buffer.from(serverObj.user + ':' + serverObj.password).toString('base64');
         }
         return;
+    }
+    /**
+     * Returns the package-alias bin directory used by `jf package-alias install`.
+     * When JFROG_CLI_HOME_DIR is set: $JFROG_CLI_HOME_DIR/package-alias/bin
+     * Otherwise Linux/macOS: $HOME/.jfrog/package-alias/bin
+     * Otherwise Windows: %USERPROFILE%\.jfrog\package-alias\bin
+     */
+    static getPackageAliasBinDir() {
+        const cliHomeDir = process.env.JFROG_CLI_HOME_DIR;
+        if (cliHomeDir) {
+            return (0, path_1.join)(cliHomeDir, 'package-alias', 'bin');
+        }
+        const home = process.env.HOME || process.env.USERPROFILE || '';
+        return (0, path_1.join)(home, '.jfrog', 'package-alias', 'bin');
+    }
+    /**
+     * If enable-package-alias is true and GITHUB_PATH is set, runs `jf package-alias install`
+     * and adds the alias bin directory to PATH via core.addPath so subsequent steps intercept mvn, npm, go, etc.
+     * On failure (e.g. older CLI without package-alias), logs a warning and does not fail the job.
+     */
+    static async setupPackageAliasIfRequested() {
+        if (!core.getBooleanInput(Utils.ENABLE_PACKAGE_ALIAS)) {
+            return;
+        }
+        const githubPath = process.env.GITHUB_PATH;
+        if (!githubPath) {
+            core.warning('enable-package-alias is true but GITHUB_PATH is not set (not running in GitHub Actions?). Skipping package-alias setup.');
+            return;
+        }
+        const version = core.getInput(Utils.CLI_VERSION_ARG);
+        if (version !== Utils.LATEST_CLI_VERSION && !(0, semver_1.gte)(version, this.MIN_CLI_VERSION_PACKAGE_ALIAS)) {
+            core.warning('Package aliasing requires JFrog CLI ' +
+                this.MIN_CLI_VERSION_PACKAGE_ALIAS +
+                ' or above; requested version is ' +
+                version +
+                '. ' +
+                'Skipping package-alias setup; subsequent steps will not use package aliases.');
+            return;
+        }
+        const packageAliasTools = core
+            .getInput(Utils.PACKAGE_ALIAS_TOOLS)
+            .split(',')
+            .map((tool) => tool.trim())
+            .filter((tool) => !!tool)
+            .join(',');
+        const packageAliasInstallArgs = ['package-alias', 'install'];
+        if (packageAliasTools) {
+            packageAliasInstallArgs.push('--packages', packageAliasTools);
+        }
+        const exitCode = await (0, exec_1.exec)('jf', packageAliasInstallArgs, { ignoreReturnCode: true });
+        if (exitCode !== core.ExitCode.Success) {
+            core.warning('jf package-alias install failed (exit code ' +
+                exitCode +
+                '). ' +
+                "Package Aliasing requires JFrog CLI version that supports 'jf package-alias'. " +
+                'Skipping; subsequent steps will not use package aliases.');
+            return;
+        }
+        const aliasBinDir = Utils.getPackageAliasBinDir();
+        core.addPath(aliasBinDir);
+        core.info('Package aliases installed and "' + aliasBinDir + '" added to PATH.');
     }
 }
 exports.Utils = Utils;
