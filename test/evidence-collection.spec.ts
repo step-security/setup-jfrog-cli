@@ -8,19 +8,24 @@ jest.mock('@actions/http-client');
 jest.mock('../src/utils');
 jest.mock('../src/oidc-utils');
 
-// Manual mock for fs - include both sync and async functions
-jest.mock('fs', () => ({
-    promises: {
-        access: jest.fn(),
-        readFile: jest.fn(),
-        stat: jest.fn(),
-    },
-    existsSync: jest.fn(),
-    readFileSync: jest.fn(),
-    writeFileSync: jest.fn(),
-    mkdirSync: jest.fn(),
-    statSync: jest.fn(),
-}));
+// Manual mock for fs - spread actual fs to preserve constants (needed by @actions/core v2)
+jest.mock('fs', () => {
+    const actualFs = jest.requireActual('fs');
+    return {
+        ...actualFs,
+        promises: {
+            ...actualFs.promises,
+            access: jest.fn(),
+            readFile: jest.fn(),
+            stat: jest.fn(),
+        },
+        existsSync: jest.fn(),
+        readFileSync: jest.fn(),
+        writeFileSync: jest.fn(),
+        mkdirSync: jest.fn(),
+        statSync: jest.fn(),
+    };
+});
 const mockFs = require('fs').promises;
 
 describe('Evidence Collection', () => {
