@@ -32,6 +32,8 @@ var __importStar = (this && this.__importStar) || function (mod) {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.checkConnectionToArtifactory = checkConnectionToArtifactory;
 const core = __importStar(__nccwpck_require__(7484));
+const fs_1 = __nccwpck_require__(9896);
+const path_1 = __nccwpck_require__(6928);
 const utils_1 = __nccwpck_require__(9277);
 const job_summary_1 = __nccwpck_require__(1298);
 const evidence_collection_1 = __nccwpck_require__(1180);
@@ -128,8 +130,8 @@ async function collectAndPublishBuildInfoIfNeeded() {
     // We allow this step to fail, and we don't want to fail the entire build publish if they do.
     try {
         core.startGroup('Collect the Git information');
-        const gitDir = (__nccwpck_require__(6928).join)(workingDirectory, '.git');
-        if ((__nccwpck_require__(9896).existsSync)(gitDir)) {
+        const gitDir = (0, path_1.join)(workingDirectory, '.git');
+        if ((0, fs_1.existsSync)(gitDir)) {
             await utils_1.Utils.runCli(['rt', 'build-add-git'], { cwd: workingDirectory });
         }
         else {
@@ -1121,6 +1123,8 @@ class Utils {
     static LATEST_CLI_VERSION = 'latest';
     // The value in the download URL to set to get the latest version
     static LATEST_RELEASE_VERSION = '[RELEASE]';
+    // Logged when version=latest is downloaded through a remote repository, which caches the literal [RELEASE] path
+    static LATEST_FROM_REMOTE_INFO = 'download-repository is set with version=latest, so the CLI is requested from the literal path v2/[RELEASE] instead of a version number. If that repository stores artifacts locally, the binary cached under this path can keep being served on later runs. Use a concrete version to download from a per-version path, or omit download-repository if the runner can reach releases.jfrog.io.';
     // Placeholder CLI version to use to keep 'latest' in cache.
     static LATEST_SEMVER = '100.100.100';
     // The default server id name for separate env config
@@ -1191,6 +1195,7 @@ class Utils {
         let version = core.getInput(Utils.CLI_VERSION_ARG);
         let cliRemote = core.getInput(Utils.CLI_REMOTE_ARG);
         const isLatestVer = version === Utils.LATEST_CLI_VERSION;
+        Utils.logIfLatestDownloadedFromRemote(version, cliRemote);
         if (!isLatestVer && (0, semver_1.lt)(version, this.MIN_CLI_VERSION)) {
             throw new Error('Requested to download JFrog CLI version ' + version + ' but must be at least ' + this.MIN_CLI_VERSION);
         }
@@ -1273,6 +1278,16 @@ class Utils {
             major = version.split('.')[0];
         }
         return `${artifactoryUrl}/${downloadDetails.repository}/v${major}/${version}/${architecture}/${fileName}`;
+    }
+    /**
+     * Log when latest is resolved through an Artifactory repository.
+     * [RELEASE] is part of the artifact path, so a remote repository caches it like any other file
+     * and keeps serving the first version it resolved. Pin a concrete version instead.
+     */
+    static logIfLatestDownloadedFromRemote(version, cliRemote) {
+        if (cliRemote && version === Utils.LATEST_CLI_VERSION) {
+            core.info(Utils.LATEST_FROM_REMOTE_INFO);
+        }
     }
     // Get Config Tokens created on your local machine using JFrog CLI.
     // The Tokens configured with JF_ENV_ environment variables.
