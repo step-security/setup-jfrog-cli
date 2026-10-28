@@ -1,12 +1,12 @@
 {
     "name": "@step-security/setup-jfrog-cli",
-    "version": "5.2.0",
+    "version": "5.3.1",
     "private": true,
     "description": "Setup JFrog CLI in GitHub Actions",
     "main": "dist/index.js",
     "engines": {
         "npm": ">=10.0.0",
-        "node": ">=24.0.0"
+        "node": ">=24"
     },
     "scripts": {
         "build": "npm run compile && npm run package",
@@ -31,6 +31,7 @@
         "mission-control"
     ],
     "author": "step-security",
+    "publisher": "step-security",
     "license": "Apache-2.0",
     "dependencies": {
         "@actions/core": "^2.0.1",
@@ -39,7 +40,7 @@
         "@actions/http-client": "^3.0.0",
         "@actions/tool-cache": "^3.0.0",
         "@octokit/core": "^5.2.0",
-        "axios": "^1.13.2",
+        "axios": "^1.20.0",
         "js-yaml": "^4.1.0",
         "semver": "~7.6.3"
     },
@@ -55,5 +56,9 @@
         "prettier": "^3.3.2",
         "ts-jest": "^29.1.4",
         "typescript": "^5.4.5"
+    },
+    "homepage": "https://github.com/step-security/setup-jfrog-cli#readme",
+    "bugs": {
+        "url": "https://github.com/step-security/setup-jfrog-cli/issues"
     }
 }
