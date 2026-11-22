@@ -5,8 +5,8 @@
   "action_type": "node",
   "upstream": {
     "repository": "jfrog/setup-jfrog-cli",
-    "synced_tag": "v5.3.1",
-    "synced_commit": "1a84ddcff2d475751d8392ef6d7ecb478a7cfe53",
+    "synced_tag": "v5.3.5",
+    "synced_commit": "4c2f06da03095113100534a16d58d8a252680949",
     "archived": false
   },
   "build": {
